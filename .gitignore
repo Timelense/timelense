@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+
+# env files
+.env
+.env.local
+.env.*.local
+
+# drizzle migrations (keep drizzle/ folder but ignore sqlite journal)
+*.db
+*.db-journal
+
+# Expo
+mobile/.expo/
+mobile/ios/
+mobile/android/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+
+# backend
+backend/node_modules
+backend/.env
