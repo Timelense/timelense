@@ -71,9 +71,3 @@ export function buildApp() {
 
   return app
 }
-
-// Vercel's zero-config Fastify support uses src/app.ts as the entrypoint and
-// requires the Fastify instance as the default export. Local dev (server.ts)
-// and tests keep using buildApp().
-const app = buildApp()
-export default app

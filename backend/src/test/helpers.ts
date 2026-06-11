@@ -1,4 +1,4 @@
-import { buildApp } from '../app.js'
+import { buildApp } from '../build-app.js'
 import type { FastifyInstance } from 'fastify'
 
 export function buildTestApp(): FastifyInstance {
