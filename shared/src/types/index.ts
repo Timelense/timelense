@@ -36,5 +36,68 @@ export interface TimeReport {
   productiveMinutes: number
   nonProductiveMinutes: number
   neutralMinutes: number
+  score: number | null
   entries: TaskEntry[]
+}
+
+export interface DailyTimelineEntry extends TaskEntry {
+  durationMinutes: number
+}
+
+export interface DailyTimeline {
+  date: string
+  entries: DailyTimelineEntry[]
+  totalMinutes: number
+  productiveMinutes: number
+  nonProductiveMinutes: number
+  neutralMinutes: number
+  score: number | null
+}
+
+export interface DistributionBucket {
+  id: string | null
+  name: string | null
+  color?: string
+  tag?: ProductivityTag
+  totalMinutes: number
+}
+
+export interface Distribution {
+  groupBy: 'category' | 'tag'
+  from: string
+  to: string
+  buckets: DistributionBucket[]
+}
+
+export interface DayInsight {
+  date: string
+  totalMinutes: number
+  productiveMinutes: number
+  nonProductiveMinutes: number
+  neutralMinutes: number
+  score: number | null
+}
+
+export interface CategoryInsight {
+  id: string | null
+  name: string | null
+  color?: string
+  totalMinutes: number
+  share: number
+}
+
+export interface PeriodInsights {
+  period: 'week' | 'month'
+  offset: number
+  from: string
+  to: string
+  days: DayInsight[]
+  totalMinutes: number
+  productiveMinutes: number
+  nonProductiveMinutes: number
+  neutralMinutes: number
+  score: number | null
+  topCategories: CategoryInsight[]
+  deltaTotalMinutes: number | null
+  deltaScore: number | null
 }

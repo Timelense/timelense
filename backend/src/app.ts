@@ -5,6 +5,7 @@ import { ZodError } from 'zod'
 import { authRoutes } from './routes/auth.js'
 import { taskRoutes } from './routes/tasks.js'
 import { categoryRoutes } from './routes/categories.js'
+import { analyticsRoutes } from './routes/analytics.js'
 
 export function buildApp() {
   const app = Fastify({ logger: true })
@@ -35,6 +36,7 @@ export function buildApp() {
   app.register(authRoutes, { prefix: '/auth' })
   app.register(categoryRoutes, { prefix: '/categories' })
   app.register(taskRoutes, { prefix: '/tasks' })
+  app.register(analyticsRoutes, { prefix: '/analytics' })
 
   app.get('/health', async () => ({ status: 'ok' }))
 
