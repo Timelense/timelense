@@ -57,3 +57,14 @@ export const radius = {
   lg: 16,
   full: 9999,
 } as const
+
+export const categoryPalette = [
+  '#4A90D9',
+  '#48BB78',
+  '#FC8181',
+  '#F6AD55',
+  '#805AD5',
+  '#2C5282',
+  '#38A169',
+  '#E53E3E',
+] as const

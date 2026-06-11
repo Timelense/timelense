@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, Modal, FlatList, TextInput, StyleSheet, A
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Category } from '@timelense/shared'
 import { getCategories, createCategory } from '../api/categories'
-import { colors, typography, spacing, radius } from '../theme'
+import { colors, typography, spacing, radius, categoryPalette } from '../theme'
 
-const COLOR_PALETTE = ['#4A90D9', '#48BB78', '#FC8181', '#F6AD55', '#805AD5', '#2C5282', '#38A169', '#E53E3E']
+const COLOR_PALETTE = [...categoryPalette]
 
 interface Props {
   value: string | null

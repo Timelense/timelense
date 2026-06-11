@@ -2,7 +2,7 @@
 
 > Your time tells a story.
 
-TimeLens is a personal time intelligence platform that helps users track activities, analyze productivity patterns, and discover where their time really goes. More than a time tracker, TimeLens turns daily actions into meaningful insights — because every hour tells a story.
+TimeLens is a personal time intelligence platform that helps you track activities, analyze productivity patterns, and discover where your time really goes.
 
 ---
 
@@ -10,7 +10,7 @@ TimeLens is a personal time intelligence platform that helps users track activit
 
 ```
 timelense/
-  shared/    — Shared TypeScript types (DTOs, enums) used by backend and mobile
+  shared/    — Shared TypeScript types used by backend and mobile
   backend/   — Fastify + TypeScript REST API with Drizzle ORM + PostgreSQL
   mobile/    — Expo (React Native) mobile app
 ```
@@ -19,9 +19,9 @@ timelense/
 
 ## Prerequisites
 
-- [Docker](https://www.docker.com/) + Docker Compose (for the backend + database)
-- [Node.js](https://nodejs.org/) v20+ and [npm](https://www.npmjs.com/) v10+ (for mobile development)
-- [Expo Go](https://expo.dev/go) app on your phone (for mobile development)
+- [Docker](https://www.docker.com/) + Docker Compose
+- [Node.js](https://nodejs.org/) v20+ and npm v10+
+- [Expo Go](https://expo.dev/go) on your phone (for physical device testing)
 
 ---
 
@@ -30,100 +30,140 @@ timelense/
 ```bash
 git clone <repo-url>
 cd timelense
-npm install        # installs all workspaces (shared, backend, mobile) in one step
+npm install        # installs all workspaces in one step
 ```
 
 ---
 
-## 2. Backend + Database (Docker)
-
-The easiest way to run the backend and Postgres together:
+## 2. Start the Database
 
 ```bash
-docker compose up --build
+docker compose up -d db
 ```
 
-This starts:
-- **Postgres 16** on `localhost:5432` (credentials: `timelense / timelense / timelense`)
-- **Fastify API** on `http://localhost:3000`
+This starts **Postgres 16** on `localhost:5433` (host port 5433 → container 5432).  
+Credentials: user `timelense`, password `timelense`, database `timelense`.  
+Data is persisted in the `postgres_data` Docker volume.
 
-Postgres data is persisted in a Docker volume (`postgres_data`) so it survives restarts.
+---
 
-Verify the API is running:
+## 3. Configure the Backend
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+The default values in `.env.example` are correct for the Docker setup:
+
+```
+DATABASE_URL=postgresql://timelense:timelense@localhost:5433/timelense
+JWT_SECRET=change-me-to-a-long-random-string
+PORT=3000
+```
+
+Change `JWT_SECRET` to a long random string before running in any shared environment.
+
+---
+
+## 4. Run Migrations and Seed
+
+```bash
+npm run db:migrate    # applies Drizzle migrations to the database
+npm run db:seed       # creates demo user + 30 days of sample data
+```
+
+Demo credentials after seeding: `demo@timelense.app` / `demo1234`
+
+---
+
+## 5. Start the Backend
+
+```bash
+npm run dev:backend   # Fastify API in watch mode on http://localhost:3000
+```
+
+Verify it's running:
 
 ```bash
 curl http://localhost:3000/health
 # → {"status":"ok"}
 ```
 
-To stop:
-
-```bash
-docker compose down          # stops containers, keeps data
-docker compose down -v       # stops containers and deletes the database volume
-```
-
-### Running migrations
-
-Migrations need to run against the live database. With Docker running:
-
-```bash
-cd backend
-DATABASE_URL=postgresql://timelense:timelense@localhost:5432/timelense npx drizzle-kit migrate
-cd ..
-```
-
-### Local development (without Docker)
-
-If you prefer to run the backend directly with a local Postgres:
-
-```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env with your DATABASE_URL and JWT_SECRET
-npm run dev:backend
-```
-
 ---
 
-## 3. Mobile Setup
+## 6. Run the Mobile App
 
 ```bash
-npm run dev:mobile         # starts the Expo dev server
+# For a simulator (API on localhost):
+npm run dev:mobile
+
+# For a physical device (replace 192.168.x.x with your machine's LAN IP):
+EXPO_PUBLIC_API_URL=http://192.168.x.x:3000 npm run dev:mobile
 ```
 
-- Press `i` to open in iOS Simulator
-- Press `a` to open in Android Emulator
+- Press `i` for iOS Simulator, `a` for Android Emulator
 - Scan the QR code with Expo Go on your phone
 
 ---
 
-## 4. Shared Types
-
-The `shared/` package contains TypeScript types used by both `backend` and `mobile`. It is a local workspace package — no publishing required. Build it if you need the compiled output:
+## 7. Run Tests
 
 ```bash
-npm run build --workspace=shared
+npm test   # vitest against a dedicated timelense_test database (auto-created)
 ```
+
+Tests require the Docker database to be running (`docker compose up -d db`).
+
+---
+
+## Full Stack via Docker
+
+To run both the API and database in Docker (no local Node for the backend):
+
+```bash
+docker compose up --build
+```
+
+This starts:
+- **Postgres 16** on `localhost:5433`
+- **Fastify API** on `http://localhost:3000`
+
+Run migrations and seed against the running containers:
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+To stop:
+
+```bash
+docker compose down      # keeps data
+docker compose down -v   # deletes the database volume too
+```
+
+---
+
+## Scripts
+
+| Command               | What it does                              |
+|-----------------------|-------------------------------------------|
+| `npm run dev:backend` | Start Fastify API in watch mode           |
+| `npm run dev:mobile`  | Start Expo dev server                     |
+| `npm run db:migrate`  | Apply database migrations                 |
+| `npm run db:seed`     | Seed demo user + 30 days of sample data   |
+| `npm test`            | Run backend test suite                    |
+| `npm run build`       | Build shared types + backend              |
+| `npm run typecheck`   | Type-check shared + backend               |
 
 ---
 
 ## Tech Stack
 
-| Layer    | Technology                          |
-|----------|-------------------------------------|
-| Mobile   | React Native · Expo                 |
-| Backend  | Node.js · Fastify · TypeScript      |
-| Database | PostgreSQL · Drizzle ORM            |
-| Auth     | JWT (`@fastify/jwt`)                |
-| Types    | Shared TypeScript workspace package |
-
----
-
-## Scripts (from repo root)
-
-| Command              | What it does                            |
-|----------------------|-----------------------------------------|
-| `npm run dev:backend`  | Start Fastify API in watch mode         |
-| `npm run dev:mobile`   | Start Expo dev server                   |
-| `npm run build`        | Build shared types + backend            |
-| `npm run typecheck`    | Type-check shared + backend             |
+| Layer    | Technology                              |
+|----------|-----------------------------------------|
+| Mobile   | React Native · Expo SDK 56              |
+| Backend  | Node.js · Fastify 4 · TypeScript        |
+| Database | PostgreSQL 16 · Drizzle ORM             |
+| Auth     | JWT (`@fastify/jwt`) · bcryptjs         |
+| Types    | Shared TypeScript workspace package     |
