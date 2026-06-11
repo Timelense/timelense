@@ -12,5 +12,6 @@ export default defineConfig({
     setupFiles: ['./src/test/truncate.ts'],
     fileParallelism: false,
     pool: 'forks',
+    exclude: ['**/dist/**', '**/node_modules/**'],
   },
 })
