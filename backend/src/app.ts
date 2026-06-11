@@ -22,17 +22,6 @@ export function buildApp() {
     body: string,
     done: (err: Error | null, value?: unknown) => void,
   ): void => {
-    // TEMP DIAGNOSTIC — remove after debugging "Could not stop task"
-    app.log.info(
-      {
-        method: req.method,
-        url: req.url,
-        contentType: req.headers?.['content-type'],
-        rawBody: body,
-        bodyLen: body?.length,
-      },
-      'incoming body parse',
-    )
     if (body === '' || body == null) {
       done(null, undefined)
       return
@@ -82,3 +71,9 @@ export function buildApp() {
 
   return app
 }
+
+// Vercel's zero-config Fastify support uses src/app.ts as the entrypoint and
+// requires the Fastify instance as the default export. Local dev (server.ts)
+// and tests keep using buildApp().
+const app = buildApp()
+export default app
