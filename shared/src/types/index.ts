@@ -15,12 +15,17 @@ export interface Category {
 export interface TaskEntry {
   id: string
   title: string
-  categoryId: string
+  categoryId: string | null
   tag: ProductivityTag
   startedAt: string
   endedAt: string | null
   notes?: string
   userId: string
+}
+
+export interface StartTaskResponse {
+  task: TaskEntry
+  stoppedTask?: TaskEntry
 }
 
 export interface TimeReport {
