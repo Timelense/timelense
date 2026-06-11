@@ -14,5 +14,8 @@
     "test": "npm run test --workspace=backend",
     "build": "npm run build --workspace=shared && npm run build --workspace=backend",
     "typecheck": "npm run typecheck --workspace=shared && npm run typecheck --workspace=backend"
+  },
+  "overrides": {
+    "react": "19.2.3"
   }
 }

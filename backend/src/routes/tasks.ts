@@ -9,7 +9,8 @@ import type { TaskEntry, StartTaskResponse } from '@timelense/shared'
 const PRODUCTIVE_TAG = ['productive', 'non-productive', 'neutral'] as const
 
 const StartBody = z.object({
-  title: z.string().min(1).max(255),
+  // Title is optional at start: the timer-first flow asks for details on stop.
+  title: z.string().min(1).max(255).optional().default('Untitled'),
   categoryId: z.string().uuid().optional(),
   tag: z.enum(PRODUCTIVE_TAG).optional().default('neutral'),
   notes: z.string().optional(),

@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, FlatList, StyleSheet, Alert, Modal, TextInput } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { DailyTimelineEntry } from '@timelense/shared'
-import { getTimeline } from '../../src/api/analytics'
-import { editTask, deleteTask } from '../../src/api/tasks'
-import { colors, typography, spacing, radius } from '../../src/theme'
+import { getTimeline } from '../api/analytics'
+import { editTask, deleteTask } from '../api/tasks'
+import { colors, typography, spacing, radius } from '../theme'
 
 const TAG_COLOR: Record<string, string> = {
   productive: colors.productive,

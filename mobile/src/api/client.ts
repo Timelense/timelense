@@ -1,8 +1,9 @@
-import * as SecureStore from 'expo-secure-store'
-import { router } from 'expo-router'
+import * as Keychain from 'react-native-keychain'
+import Config from 'react-native-config'
+import { emitUnauthorized } from './authEvents'
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
-const TOKEN_KEY = 'auth_token'
+const BASE_URL = Config.API_URL ?? 'http://localhost:3000'
+const TOKEN_SERVICE = 'timelense_auth'
 
 export class ApiError extends Error {
   constructor(
@@ -15,15 +16,16 @@ export class ApiError extends Error {
 }
 
 export async function getToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(TOKEN_KEY)
+  const creds = await Keychain.getGenericPassword({ service: TOKEN_SERVICE })
+  return creds ? creds.password : null
 }
 
 export async function setToken(token: string): Promise<void> {
-  return SecureStore.setItemAsync(TOKEN_KEY, token)
+  await Keychain.setGenericPassword('token', token, { service: TOKEN_SERVICE })
 }
 
 export async function clearToken(): Promise<void> {
-  return SecureStore.deleteItemAsync(TOKEN_KEY)
+  await Keychain.resetGenericPassword({ service: TOKEN_SERVICE })
 }
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
@@ -35,15 +37,16 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = await getToken()
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
+  const serialized = body !== undefined ? JSON.stringify(body) : undefined
+
+  const headers: Record<string, string> = {}
+  if (serialized !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: serialized,
   })
 
   if (res.status === 204) return undefined as T
@@ -53,7 +56,7 @@ export async function apiRequest<T>(
   if (!res.ok) {
     if (res.status === 401) {
       await clearToken()
-      router.replace('/login')
+      emitUnauthorized()
     }
     throw new ApiError(res.status, data.error ?? 'unknown_error')
   }

@@ -1,11 +1,13 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "strict": true,
-    "ignoreDeprecations": "6.0",
+    "types": [],
     "baseUrl": ".",
     "paths": {
       "@timelense/shared": ["../shared/src/index.ts"]
     }
-  }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods", "android", "ios"]
 }

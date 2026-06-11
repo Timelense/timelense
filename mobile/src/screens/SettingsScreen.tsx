@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity } from 'react-native'
-import { colors, typography, spacing, radius } from '../../src/theme'
-import { useAuth } from '../../src/contexts/auth'
-import { logout } from '../../src/api/auth'
+import { colors, typography, spacing, radius } from '../theme'
+import { useAuth } from '../contexts/auth'
+import { logout } from '../api/auth'
 
 export default function SettingsScreen() {
   const { signOut } = useAuth()

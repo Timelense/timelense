@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native'
-import { Link } from 'expo-router'
-import { colors, typography, spacing, radius } from '../src/theme'
-import { login } from '../src/api/auth'
-import { useAuth } from '../src/contexts/auth'
-import { ApiError } from '../src/api/client'
+import { colors, typography, spacing, radius } from '../theme'
+import { login } from '../api/auth'
+import { useAuth } from '../contexts/auth'
+import { ApiError } from '../api/client'
+import type { RootStackScreenProps } from '../navigation/types'
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }: RootStackScreenProps<'Login'>) {
   const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -65,9 +65,9 @@ export default function LoginScreen() {
           {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Sign In</Text>}
         </TouchableOpacity>
 
-        <Link href="/register" style={styles.link}>
-          Don't have an account? Register
-        </Link>
+        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+          <Text style={styles.link}>Don't have an account? Register</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   )

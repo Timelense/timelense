@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { getToken, clearToken } from '../api/client'
+import { onUnauthorized } from '../api/authEvents'
 
 interface AuthState {
   isLoaded: boolean
@@ -15,11 +16,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isSignedIn, setIsSignedIn] = useState(false)
 
   useEffect(() => {
-    getToken().then((t) => {
-      setIsSignedIn(!!t)
-      setIsLoaded(true)
-    })
+    getToken()
+      .then((t) => setIsSignedIn(!!t))
+      .catch((e) => {
+        console.warn('Failed to read auth token from keychain:', e)
+        setIsSignedIn(false)
+      })
+      .finally(() => setIsLoaded(true))
   }, [])
+
+  // A 401 from the API layer clears the token and signs the user out, which
+  // swaps the navigator back to the auth stack.
+  useEffect(() => onUnauthorized(() => setIsSignedIn(false)), [])
 
   const signIn = () => setIsSignedIn(true)
 

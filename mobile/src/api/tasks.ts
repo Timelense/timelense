@@ -6,11 +6,11 @@ export function getCurrentTask(): Promise<TaskEntry | null> {
 }
 
 export function startTask(body: {
-  title: string
+  title?: string
   categoryId?: string
   tag?: string
   notes?: string
-}): Promise<StartTaskResponse> {
+} = {}): Promise<StartTaskResponse> {
   return apiRequest('/tasks/start', 'POST', body)
 }
 

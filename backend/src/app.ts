@@ -12,6 +12,42 @@ export function buildApp() {
 
   app.register(cors, { origin: true })
 
+  // Parse all request bodies as JSON regardless of the Content-Type header.
+  // React Native's fetch defaults string bodies to `text/plain;charset=UTF-8`
+  // and bodyless requests (e.g. PATCH /tasks/:id/stop) may still carry a
+  // Content-Type — the default parsers reject both (415 / 400). This handler
+  // treats an empty body as no body and JSON-parses anything non-empty.
+  const jsonBodyParser = (
+    req: { method?: string; url?: string; headers?: Record<string, unknown> },
+    body: string,
+    done: (err: Error | null, value?: unknown) => void,
+  ): void => {
+    // TEMP DIAGNOSTIC — remove after debugging "Could not stop task"
+    app.log.info(
+      {
+        method: req.method,
+        url: req.url,
+        contentType: req.headers?.['content-type'],
+        rawBody: body,
+        bodyLen: body?.length,
+      },
+      'incoming body parse',
+    )
+    if (body === '' || body == null) {
+      done(null, undefined)
+      return
+    }
+    try {
+      done(null, JSON.parse(body))
+    } catch (err) {
+      ;(err as { statusCode?: number }).statusCode = 400
+      done(err as Error, undefined)
+    }
+  }
+
+  app.removeAllContentTypeParsers()
+  app.addContentTypeParser('*', { parseAs: 'string' }, jsonBodyParser)
+
   app.register(jwt, {
     secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-production',
   })
@@ -28,6 +64,10 @@ export function buildApp() {
           message: e.message,
         })),
       })
+    }
+    const status = (error as { statusCode?: number }).statusCode ?? 500
+    if (status < 500) {
+      return reply.code(status).send({ error: error.message })
     }
     app.log.error(error)
     return reply.code(500).send({ error: 'internal_server_error' })
