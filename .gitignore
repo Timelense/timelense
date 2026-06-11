@@ -16,11 +16,6 @@ build/
 *.db
 *.db-journal
 
-# Expo
-mobile/.expo/
-mobile/ios/
-mobile/android/
-
 # OS
 .DS_Store
 Thumbs.db
