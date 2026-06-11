@@ -1,4 +1,7 @@
 import 'dotenv/config'
+// Side-effect import: Vercel's Fastify detection requires the entrypoint file
+// to import 'fastify' directly.
+import 'fastify'
 import { buildApp } from './build-app.js'
 
 // Vercel's zero-config Fastify support detects this file as the entrypoint
