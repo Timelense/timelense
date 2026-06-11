@@ -1,9 +1,15 @@
 export type ProductivityTag = 'productive' | 'non-productive' | 'neutral'
 
+export interface AuthResponse {
+  token: string
+  user: { id: string; email: string }
+}
+
 export interface Category {
   id: string
   name: string
   parentId?: string
+  color?: string
 }
 
 export interface TaskEntry {

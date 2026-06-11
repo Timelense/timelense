@@ -1,23 +1,22 @@
 import type { FastifyInstance } from 'fastify'
+import { authenticate } from '../plugins/auth.js'
 
 export async function taskRoutes(app: FastifyInstance) {
-  app.get('/', async (request, reply) => {
-    // TODO: fetch tasks for authenticated user
+  app.addHook('preHandler', authenticate)
+
+  app.get('/', async (_request, reply) => {
     return reply.code(501).send({ message: 'Not implemented' })
   })
 
-  app.post('/', async (request, reply) => {
-    // TODO: create task entry
+  app.post('/', async (_request, reply) => {
     return reply.code(501).send({ message: 'Not implemented' })
   })
 
-  app.patch('/:id/stop', async (request, reply) => {
-    // TODO: set endedAt for running task
+  app.patch('/:id/stop', async (_request, reply) => {
     return reply.code(501).send({ message: 'Not implemented' })
   })
 
-  app.delete('/:id', async (request, reply) => {
-    // TODO: delete task entry
+  app.delete('/:id', async (_request, reply) => {
     return reply.code(501).send({ message: 'Not implemented' })
   })
 }
