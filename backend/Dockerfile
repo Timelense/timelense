@@ -33,4 +33,4 @@ COPY --from=base /app/backend/dist ./backend/dist
 WORKDIR /app/backend
 EXPOSE 3000
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/backend/src/server.js"]
