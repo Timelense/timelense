@@ -46,8 +46,9 @@ react {
     // extraPackagerArgs = []
 
     /* Hermes Commands */
-    //   The hermes compiler command to run. By default it is 'hermesc'
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //   Monorepo: hermes-compiler is hoisted to the repo-root node_modules,
+    //   which the default lookup (relative to mobile/) misses.
+    hermesCommand = "$rootDir/../../node_modules/hermes-compiler/hermesc/%OS-BIN%/hermesc"
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]

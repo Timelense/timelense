@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import Svg, { Rect, G, Circle, Text as SvgText } from 'react-native-svg'
@@ -144,6 +145,68 @@ function BarChart({ days, width }: { days: DayInsight[]; width: number }) {
   )
 }
 
+// ---- tag split donut -----------------------------------------------------------
+
+const DONUT_SIZE = 110
+const DONUT_STROKE = 16
+const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2
+const DONUT_C = 2 * Math.PI * DONUT_R
+
+function TagDonut({ productive, nonProductive, neutral }: { productive: number; nonProductive: number; neutral: number }) {
+  const total = productive + nonProductive + neutral
+  if (total === 0) return null
+  const segments = [
+    { value: productive, color: colors.productive },
+    { value: nonProductive, color: colors.nonProductive },
+    { value: neutral, color: colors.neutral },
+  ].filter((s) => s.value > 0)
+
+  let acc = 0
+  return (
+    <Svg width={DONUT_SIZE} height={DONUT_SIZE}>
+      {segments.map((seg, i) => {
+        const frac = seg.value / total
+        const dash = frac * DONUT_C
+        const offset = -acc * DONUT_C
+        acc += frac
+        return (
+          <Circle
+            key={i}
+            cx={DONUT_SIZE / 2}
+            cy={DONUT_SIZE / 2}
+            r={DONUT_R}
+            stroke={seg.color}
+            strokeWidth={DONUT_STROKE}
+            fill="none"
+            strokeDasharray={`${dash} ${DONUT_C - dash}`}
+            strokeDashoffset={offset}
+            transform={`rotate(-90 ${DONUT_SIZE / 2} ${DONUT_SIZE / 2})`}
+          />
+        )
+      })}
+      <SvgText
+        x={DONUT_SIZE / 2}
+        y={DONUT_SIZE / 2 + 1}
+        textAnchor="middle"
+        fontSize={15}
+        fontWeight="bold"
+        fill={colors.text}
+      >
+        {fmtMinutes(total)}
+      </SvgText>
+      <SvgText
+        x={DONUT_SIZE / 2}
+        y={DONUT_SIZE / 2 + 16}
+        textAnchor="middle"
+        fontSize={9}
+        fill={colors.textMuted}
+      >
+        tracked
+      </SvgText>
+    </Svg>
+  )
+}
+
 // ---- animated horizontal share bar -------------------------------------------
 
 function ShareBar({ share, color }: { share: number; color: string }) {
@@ -194,10 +257,13 @@ export default function InsightsScreen() {
   const [offset, setOffset] = useState(0)
   const [chartWidth, setChartWidth] = useState(0)
 
-  const { data: insights } = useQuery({
+  const { data: insights, refetch: refetchInsights } = useQuery({
     queryKey: ['insights', period, offset],
     queryFn: () => getInsights({ period, offset }),
   })
+
+  // Tab screens stay mounted — refetch whenever this tab regains focus
+  useFocusEffect(useCallback(() => { refetchInsights() }, [refetchInsights]))
 
   const { data: distribution } = useQuery({
     queryKey: ['distribution', period, offset, insights?.from, insights?.to],
@@ -248,9 +314,9 @@ export default function InsightsScreen() {
 
       {insights && isEmpty && (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Nothing tracked yet</Text>
+          <Text style={styles.emptyTitle}>No data, no judgment</Text>
           <Text style={styles.emptyText}>
-            Time you track this {period} will show up here — hit Start on the Timer tab.
+            Track some time this {period} and we'll turn it into charts you can brag about.
           </Text>
         </View>
       )}
@@ -281,6 +347,46 @@ export default function InsightsScreen() {
               deltaSuffix="m"
             />
             <StatCard label="Productive" value={fmtMinutes(insights.productiveMinutes)} />
+          </View>
+
+          {(() => {
+            const activeDays = insights.days.filter((d) => d.totalMinutes > 0)
+            const avgPerDay = activeDays.length > 0 ? Math.round(insights.totalMinutes / activeDays.length) : 0
+            const best = activeDays.reduce<DayInsight | null>(
+              (acc, d) => (acc == null || d.totalMinutes > acc.totalMinutes ? d : acc),
+              null,
+            )
+            const bestLabel = best
+              ? new Date(best.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short', day: 'numeric' })
+              : '—'
+            return (
+              <View style={styles.statRow}>
+                <StatCard label="Avg per active day" value={fmtMinutes(avgPerDay)} />
+                <StatCard label={`Best day · ${bestLabel}`} value={best ? fmtMinutes(best.totalMinutes) : '—'} />
+              </View>
+            )
+          })()}
+
+          {/* Tag split donut */}
+          <View style={[styles.section, styles.donutSection]}>
+            <TagDonut
+              productive={insights.productiveMinutes}
+              nonProductive={insights.nonProductiveMinutes}
+              neutral={insights.neutralMinutes}
+            />
+            <View style={styles.donutLegend}>
+              {[
+                { color: colors.productive, label: 'Productive', value: insights.productiveMinutes },
+                { color: colors.nonProductive, label: 'Non-productive', value: insights.nonProductiveMinutes },
+                { color: colors.neutral, label: 'Neutral', value: insights.neutralMinutes },
+              ].map((item) => (
+                <View key={item.label} style={styles.donutLegendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.donutLegendLabel}>{item.label}</Text>
+                  <Text style={styles.donutLegendValue}>{fmtMinutes(item.value)}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           {/* Daily activity chart */}
@@ -375,6 +481,12 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: typography.size.xs, color: colors.textSecondary },
+  // donut
+  donutSection: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  donutLegend: { flex: 1, gap: spacing.sm },
+  donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  donutLegendLabel: { flex: 1, fontSize: typography.size.sm, color: colors.textSecondary },
+  donutLegendValue: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text, fontVariant: ['tabular-nums'] },
   // category bars
   catDot: { width: 10, height: 10, borderRadius: 5 },
   catName: { flex: 1, fontSize: typography.size.sm, color: colors.text },

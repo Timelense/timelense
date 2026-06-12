@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native'
 import { colors, typography, spacing, radius } from '../theme'
+import { AuroraBackground } from '../components/AuroraBackground'
+import { BrandLogo, BrandWordmark } from '../components/BrandHeader'
 import { login } from '../api/auth'
 import { useAuth } from '../contexts/auth'
 import { ApiError } from '../api/client'
@@ -35,9 +37,13 @@ export default function LoginScreen({ navigation }: RootStackScreenProps<'Login'
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AuroraBackground />
       <View style={styles.inner}>
-        <Text style={styles.title}>TimeLens</Text>
-        <Text style={styles.subtitle}>Sign in to continue</Text>
+        <View style={styles.brand}>
+          <BrandLogo size={64} />
+          <BrandWordmark size={typography.size.xxl} />
+        </View>
+        <Text style={styles.subtitle}>Your time, in focus. Sign in to continue.</Text>
 
         {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -76,7 +82,7 @@ export default function LoginScreen({ navigation }: RootStackScreenProps<'Login'
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1, justifyContent: 'center', padding: spacing.xl },
-  title: { fontSize: typography.size.xxxl, fontWeight: typography.weight.bold, color: colors.primary, textAlign: 'center', marginBottom: spacing.xs },
+  brand: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   subtitle: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xl },
   errorText: { color: colors.danger, fontSize: typography.size.sm, marginBottom: spacing.md, textAlign: 'center' },
   input: {
@@ -98,5 +104,5 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: colors.white, fontWeight: typography.weight.semibold, fontSize: typography.size.md },
-  link: { color: colors.primary, textAlign: 'center', fontSize: typography.size.sm },
+  link: { color: colors.accent, textAlign: 'center', fontSize: typography.size.sm },
 })

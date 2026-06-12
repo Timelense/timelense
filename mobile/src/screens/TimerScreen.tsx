@@ -16,6 +16,7 @@ import type { ProductivityTag, TaskEntry } from '@timelense/shared'
 import { getCurrentTask, startTask, stopTask, editTask, deleteTask } from '../api/tasks'
 import { TagSelector } from '../components/TagSelector'
 import { CategoryPicker } from '../components/CategoryPicker'
+import { AuroraBackground } from '../components/AuroraBackground'
 import { colors, typography, spacing, radius } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
@@ -33,6 +34,23 @@ function formatTime(iso: string): string {
 }
 
 const BTN_SIZE = 190
+
+// Quirky-but-professional microcopy, picked at random
+const IDLE_HINTS = [
+  'Time flies. Catch it.',
+  'Big things start with one tap.',
+  "Track first, judge later.",
+  'Your future self is watching. No pressure.',
+  'One tap. Total clarity.',
+]
+const STOP_PROMPTS = [
+  'Nice sprint! What was it?',
+  'So… what just happened?',
+  'Label that block of brilliance',
+  'What did this slice of life go to?',
+  'Give those minutes a name',
+]
+const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 
 // Soft expanding ring behind the big button
 function PulseRing({ color, active }: { color: string; active: boolean }) {
@@ -117,12 +135,21 @@ export default function TimerScreen() {
   const [saving, setSaving] = useState(false)
   const [elapsed, setElapsed] = useState('00:00')
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [idleHint] = useState(() => pick(IDLE_HINTS))
+  const [stopPrompt, setStopPrompt] = useState(STOP_PROMPTS[0])
 
   const { data: current, isLoading } = useQuery({
     queryKey: ['current-task'],
     queryFn: getCurrentTask,
     refetchInterval: false,
   })
+
+  // Refresh every screen that shows tracked data
+  const refreshData = () => {
+    for (const key of ['tasks', 'timeline', 'insights', 'distribution']) {
+      qc.invalidateQueries({ queryKey: [key] })
+    }
+  }
 
   // Live elapsed time computed from startedAt — survives backgrounding
   useEffect(() => {
@@ -152,7 +179,7 @@ export default function TimerScreen() {
       const res = await startTask()
       // Keep the local start time for display so the timer doesn't jump.
       qc.setQueryData(['current-task'], { ...res.task, startedAt: localStartedAt })
-      qc.invalidateQueries({ queryKey: ['tasks'] })
+      refreshData()
     } catch {
       qc.setQueryData(['current-task'], null)
       Alert.alert('Error', 'Could not start the timer')
@@ -165,6 +192,7 @@ export default function TimerScreen() {
     try {
       const stopped = await stopTask(current.id)
       qc.setQueryData(['current-task'], null)
+      setStopPrompt(pick(STOP_PROMPTS))
       setPendingEntry(stopped)
       setTitle('')
       setCategoryId(null)
@@ -186,7 +214,7 @@ export default function TimerScreen() {
         tag,
         notes: notes.trim() || null,
       })
-      qc.invalidateQueries({ queryKey: ['tasks'] })
+      refreshData()
       setPendingEntry(null)
     } catch {
       Alert.alert('Error', 'Could not save the entry')
@@ -205,7 +233,7 @@ export default function TimerScreen() {
         onPress: async () => {
           try {
             await deleteTask(pendingEntry.id)
-            qc.invalidateQueries({ queryKey: ['tasks'] })
+            refreshData()
             setPendingEntry(null)
           } catch {
             Alert.alert('Error', 'Could not discard the entry')
@@ -222,7 +250,7 @@ export default function TimerScreen() {
     return (
       <FadeIn>
         <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.sectionTitle}>What did you work on?</Text>
+          <Text style={styles.sectionTitle}>{stopPrompt}</Text>
           <Text style={styles.spanSummary}>
             {formatTime(pendingEntry.startedAt)} – {pendingEntry.endedAt ? formatTime(pendingEntry.endedAt) : ''}
             {'  ·  '}
@@ -271,6 +299,7 @@ export default function TimerScreen() {
     return (
       <FadeIn>
         <View style={[styles.container, styles.centered]}>
+          <AuroraBackground accent={colors.danger} />
           <Text style={styles.runningLabel}>RUNNING</Text>
           <Text style={styles.elapsed}>{elapsed}</Text>
           <Text style={styles.startedAt}>since {formatTime(current.startedAt)}</Text>
@@ -285,8 +314,9 @@ export default function TimerScreen() {
   return (
     <FadeIn>
       <View style={[styles.container, styles.centered]}>
+        <AuroraBackground accent={colors.primary} />
         <BigButton label="Start" color={colors.primary} onPress={handleStart} pulse />
-        <Text style={styles.hint}>Tap to start tracking.{'\n'}You'll add details when you stop.</Text>
+        <Text style={styles.hint}>{idleHint}{'\n'}Tap Start — details come later.</Text>
       </View>
     </FadeIn>
   )

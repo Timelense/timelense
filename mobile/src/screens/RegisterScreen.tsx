@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native'
 import { colors, typography, spacing, radius } from '../theme'
+import { AuroraBackground } from '../components/AuroraBackground'
+import { BrandLogo, BrandWordmark } from '../components/BrandHeader'
 import { register } from '../api/auth'
 import { useAuth } from '../contexts/auth'
 import { ApiError } from '../api/client'
@@ -36,9 +38,13 @@ export default function RegisterScreen({ navigation }: RootStackScreenProps<'Reg
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AuroraBackground />
       <View style={styles.inner}>
-        <Text style={styles.title}>TimeLens</Text>
-        <Text style={styles.subtitle}>Create an account</Text>
+        <View style={styles.brand}>
+          <BrandLogo size={64} />
+          <BrandWordmark size={typography.size.xxl} />
+        </View>
+        <Text style={styles.subtitle}>Start catching your hours — create an account.</Text>
 
         {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -77,7 +83,7 @@ export default function RegisterScreen({ navigation }: RootStackScreenProps<'Reg
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1, justifyContent: 'center', padding: spacing.xl },
-  title: { fontSize: typography.size.xxxl, fontWeight: typography.weight.bold, color: colors.primary, textAlign: 'center', marginBottom: spacing.xs },
+  brand: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   subtitle: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xl },
   errorText: { color: colors.danger, fontSize: typography.size.sm, marginBottom: spacing.md, textAlign: 'center' },
   input: {
