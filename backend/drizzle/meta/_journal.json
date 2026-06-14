@@ -15,6 +15,13 @@
       "when": 1781404431048,
       "tag": "0001_tranquil_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781417478659,
+      "tag": "0002_acoustic_the_liberteens",
+      "breakpoints": true
     }
   ]
 }

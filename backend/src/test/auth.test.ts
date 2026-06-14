@@ -62,4 +62,74 @@ describe('auth', () => {
     expect(body.error).toBe('validation_error')
     expect(Array.isArray(body.details)).toBe(true)
   })
+
+  it('forgot-password sends code for existing email', async () => {
+    const app = buildTestApp()
+    const email = 'reset@test.com'
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'oldpassword123' } })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/forgot-password', payload: { email } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.success).toBe(true)
+    expect(body.code).toHaveLength(6)
+  })
+
+  it('forgot-password returns success even if email does not exist', async () => {
+    const app = buildTestApp()
+    const res = await app.inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: 'nonexistent@test.com' } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.success).toBe(true)
+    expect(body.code).toBeUndefined()
+  })
+
+  it('reset-password updates password with correct code', async () => {
+    const app = buildTestApp()
+    const email = 'reset2@test.com'
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'oldpassword123' } })
+
+    const forgotRes = await app.inject({ method: 'POST', url: '/auth/forgot-password', payload: { email } })
+    const { code } = JSON.parse(forgotRes.body)
+
+    const resetRes = await app.inject({
+      method: 'POST',
+      url: '/auth/reset-password',
+      payload: { email, code, password: 'newpassword123' },
+    })
+    expect(resetRes.statusCode).toBe(200)
+    expect(JSON.parse(resetRes.body).success).toBe(true)
+
+    // Verify we can login with the new password
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email, password: 'newpassword123' },
+    })
+    expect(loginRes.statusCode).toBe(200)
+    expect(JSON.parse(loginRes.body).token).toBeTruthy()
+
+    // Verify we cannot login with the old password
+    const loginOldRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email, password: 'oldpassword123' },
+    })
+    expect(loginOldRes.statusCode).toBe(401)
+  })
+
+  it('reset-password fails with invalid code', async () => {
+    const app = buildTestApp()
+    const email = 'reset3@test.com'
+    await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'oldpassword123' } })
+    await app.inject({ method: 'POST', url: '/auth/forgot-password', payload: { email } })
+
+    const resetRes = await app.inject({
+      method: 'POST',
+      url: '/auth/reset-password',
+      payload: { email, code: '000000', password: 'newpassword123' },
+    })
+    expect(resetRes.statusCode).toBe(400)
+    expect(JSON.parse(resetRes.body).error).toBe('invalid_or_expired_code')
+  })
 })
