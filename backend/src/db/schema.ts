@@ -7,6 +7,8 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  resetPasswordToken: varchar('reset_password_token', { length: 255 }),
+  resetPasswordExpiresAt: timestamp('reset_password_expires_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 

@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/auth'
 import type { RootStackParamList } from './types'
 import LoginScreen from '../screens/LoginScreen'
 import RegisterScreen from '../screens/RegisterScreen'
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen'
+import ResetPasswordScreen from '../screens/ResetPasswordScreen'
 import TabNavigator from './TabNavigator'
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
@@ -20,6 +22,8 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

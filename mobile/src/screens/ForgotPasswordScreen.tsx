@@ -3,32 +3,36 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
 import { AuroraBackground } from '../components/AuroraBackground'
 import { BrandLogo, BrandWordmark } from '../components/BrandHeader'
-import { login } from '../api/auth'
-import { useAuth } from '../contexts/auth'
+import { forgotPassword } from '../api/auth'
 import { ApiError } from '../api/client'
 import type { RootStackScreenProps } from '../navigation/types'
 
-export default function LoginScreen({ navigation, route }: RootStackScreenProps<'Login'>) {
-  const { signIn } = useAuth()
+export default function ForgotPasswordScreen({ navigation }: RootStackScreenProps<'ForgotPassword'>) {
   const { colors } = useTheme()
   const styles = useMemo(() => makeStyles(colors), [colors])
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleLogin = async () => {
+  const handleSendCode = async () => {
     setError(null)
-    if (!email.trim()) { setError('Email is required'); return }
-    if (!password) { setError('Password is required'); return }
+    if (!email.trim()) {
+      setError('Email is required')
+      return
+    }
 
     setLoading(true)
     try {
-      await login(email.trim(), password)
-      signIn()
+      const res = await forgotPassword(email.trim())
+      // In development/test mode, the backend returns the code in the response.
+      // We pass it to the ResetPassword screen to auto-fill it for a friction-free dev flow.
+      navigation.navigate('ResetPassword', {
+        email: email.trim(),
+        code: res.code,
+      })
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setError('Invalid email or password')
+      if (err instanceof ApiError) {
+        setError(err.message)
       } else {
         setError('Something went wrong. Please try again.')
       }
@@ -45,19 +49,13 @@ export default function LoginScreen({ navigation, route }: RootStackScreenProps<
           <BrandLogo size={64} />
           <BrandWordmark size={typography.size.xxl} />
         </View>
-        <Text style={styles.subtitle}>Your time, in focus. Sign in to continue.</Text>
-
-        {route?.params?.message && !error && (
-          <View style={styles.successBanner}>
-            <Text style={styles.successText}>{route.params.message}</Text>
-          </View>
-        )}
+        <Text style={styles.subtitle}>Forgot your password? Enter your email and we'll send you a 6-digit verification code to reset it.</Text>
 
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <TextInput
           style={styles.input}
-          placeholder="Email"
+          placeholder="Email Address"
           placeholderTextColor={colors.textMuted}
           value={email}
           onChangeText={setEmail}
@@ -65,26 +63,13 @@ export default function LoginScreen({ navigation, route }: RootStackScreenProps<
           keyboardType="email-address"
           autoComplete="email"
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={colors.textMuted}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoComplete="password"
-        />
 
-        <TouchableOpacity style={styles.forgotPasswordContainer} onPress={() => navigation.navigate('ForgotPassword')}>
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+        <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSendCode} disabled={loading}>
+          {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Send Code</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
-          {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Sign In</Text>}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-          <Text style={styles.link}>Don't have an account? Register</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+          <Text style={styles.link}>Back to Sign In</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -95,7 +80,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1, justifyContent: 'center', padding: spacing.xl },
   brand: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  subtitle: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xl, fontWeight: typography.weight.medium },
+  subtitle: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xl, fontWeight: typography.weight.medium, lineHeight: 22 },
   errorText: { color: colors.danger, fontSize: typography.size.sm, marginBottom: spacing.md, textAlign: 'center', fontWeight: typography.weight.semibold },
   input: {
     backgroundColor: colors.surface,
@@ -118,29 +103,5 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: colors.white, fontFamily: fonts.bold, fontWeight: typography.weight.bold, fontSize: typography.size.lg },
-  link: { color: colors.accent, textAlign: 'center', fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold },
-  forgotPasswordContainer: {
-    alignSelf: 'flex-end',
-    marginBottom: spacing.lg,
-  },
-  forgotPasswordText: {
-    color: colors.accent,
-    fontSize: typography.size.sm,
-    fontFamily: fonts.semibold,
-    fontWeight: typography.weight.semibold,
-  },
-  successBanner: {
-    backgroundColor: colors.primaryLight,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  successText: {
-    color: colors.primary,
-    fontSize: typography.size.sm,
-    textAlign: 'center',
-    fontWeight: typography.weight.semibold,
-  },
+  link: { color: colors.accent, textAlign: 'center', fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, marginTop: spacing.md },
 })
