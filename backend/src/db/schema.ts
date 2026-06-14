@@ -27,6 +27,7 @@ export const tasks = pgTable('tasks', {
   notes: text('notes'),
   startedAt: timestamp('started_at').defaultNow().notNull(),
   endedAt: timestamp('ended_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   userStartedAtIdx: index('tasks_user_started_at_idx').on(table.userId, table.startedAt),
   userCategoryIdx: index('tasks_user_category_idx').on(table.userId, table.categoryId),

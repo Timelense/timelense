@@ -312,6 +312,14 @@ export default function InsightsScreen() {
         </TouchableOpacity>
       </View>
 
+      {insights && insights.isCached && (
+        <View style={styles.cachedBanner}>
+          <Text style={styles.cachedBannerText}>
+            ⚠️ Showing offline cached data from {insights.fetchedAt ? new Date(insights.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'earlier'}
+          </Text>
+        </View>
+      )}
+
       {insights && isEmpty && (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No data, no judgment</Text>
@@ -444,6 +452,19 @@ export default function InsightsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
+  cachedBanner: {
+    backgroundColor: `${colors.warning}1A`,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  cachedBannerText: {
+    color: colors.warning,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.medium,
+  },
   // toggle
   toggleRow: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md, padding: 3, borderWidth: 1, borderColor: colors.border },
   toggleBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.sm, alignItems: 'center' },

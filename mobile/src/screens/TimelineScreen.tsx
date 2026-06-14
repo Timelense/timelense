@@ -12,12 +12,11 @@ import {
   Animated,
   Easing,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { DailyTimelineEntry, ProductivityTag } from '@timelense/shared'
-import { getTimeline } from '../api/analytics'
+import type { DailyTimeline, DailyTimelineEntry, ProductivityTag } from '@timelense/shared'
+import { getTimeline, editTask, deleteTask } from '../api/tasks'
 import { getCategories } from '../api/categories'
-import { editTask, deleteTask } from '../api/tasks'
 import { TagSelector } from '../components/TagSelector'
+import { SyncIndicator } from '../components/SyncIndicator'
 import { colors, typography, spacing, radius } from '../theme'
 
 const TAG_COLOR: Record<string, string> = {
@@ -99,23 +98,27 @@ function DayBar({ productive, nonProductive, neutral }: { productive: number; no
 }
 
 export default function TimelineScreen() {
-  const qc = useQueryClient()
   const [date, setDate] = useState(todayStr())
+  const [data, setData] = useState<DailyTimeline | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const [editing, setEditing] = useState<DailyTimelineEntry | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editTag, setEditTag] = useState<ProductivityTag>('neutral')
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['timeline', date],
-    queryFn: () => getTimeline(date),
-  })
+  // Load timeline from local DB (synchronous)
+  const loadTimeline = useCallback(() => {
+    setData(getTimeline(date))
+  }, [date])
 
-  // Tab screens stay mounted — refetch whenever this tab regains focus
-  useFocusEffect(useCallback(() => { refetch() }, [refetch]))
+  // Reload when date changes
+  useEffect(() => { loadTimeline() }, [loadTimeline])
 
-  const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: getCategories })
-  const catById = new Map((categories ?? []).map((c) => [c.id, c]))
+  // Reload when tab regains focus
+  useFocusEffect(useCallback(() => { loadTimeline() }, [loadTimeline]))
+
+  const categories = getCategories()
+  const catById = new Map(categories.map((c) => [c.id, c]))
 
   const openEdit = (entry: DailyTimelineEntry) => {
     setEditing(entry)
@@ -124,12 +127,11 @@ export default function TimelineScreen() {
     setEditTag(entry.tag)
   }
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!editing) return
     try {
-      await editTask(editing.id, { title: editTitle, notes: editNotes || null, tag: editTag })
-      qc.invalidateQueries({ queryKey: ['timeline', date] })
-      qc.invalidateQueries({ queryKey: ['insights'] })
+      editTask(editing.id, { title: editTitle, notes: editNotes || null, tag: editTag })
+      loadTimeline()
       setEditing(null)
     } catch {
       Alert.alert('Error', 'Could not save changes')
@@ -141,11 +143,10 @@ export default function TimelineScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
-        onPress: async () => {
+        onPress: () => {
           try {
-            await deleteTask(entry.id)
-            qc.invalidateQueries({ queryKey: ['timeline', date] })
-            qc.invalidateQueries({ queryKey: ['insights'] })
+            deleteTask(entry.id)
+            loadTimeline()
           } catch { Alert.alert('Error', 'Could not delete entry') }
         },
       },

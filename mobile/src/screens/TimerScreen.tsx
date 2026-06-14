@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   View,
   Text,
@@ -11,12 +11,13 @@ import {
   Easing,
   Pressable,
 } from 'react-native'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useFocusEffect } from '@react-navigation/native'
 import type { ProductivityTag, TaskEntry } from '@timelense/shared'
 import { getCurrentTask, startTask, stopTask, editTask, deleteTask } from '../api/tasks'
 import { TagSelector } from '../components/TagSelector'
 import { CategoryPicker } from '../components/CategoryPicker'
 import { AuroraBackground } from '../components/AuroraBackground'
+import { SyncIndicator } from '../components/SyncIndicator'
 import { colors, typography, spacing, radius } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
@@ -125,7 +126,9 @@ function BigButton({ label, color, onPress, pulse }: { label: string; color: str
 }
 
 export default function TimerScreen() {
-  const qc = useQueryClient()
+  // Current running task — read from local DB (synchronous)
+  const [current, setCurrent] = useState<TaskEntry | null>(() => getCurrentTask())
+  const [isLoading, setIsLoading] = useState(false)
   // Entry that was just stopped and is awaiting details
   const [pendingEntry, setPendingEntry] = useState<TaskEntry | null>(null)
   const [title, setTitle] = useState('')
@@ -138,18 +141,10 @@ export default function TimerScreen() {
   const [idleHint] = useState(() => pick(IDLE_HINTS))
   const [stopPrompt, setStopPrompt] = useState(STOP_PROMPTS[0])
 
-  const { data: current, isLoading } = useQuery({
-    queryKey: ['current-task'],
-    queryFn: getCurrentTask,
-    refetchInterval: false,
-  })
-
-  // Refresh every screen that shows tracked data
-  const refreshData = () => {
-    for (const key of ['tasks', 'timeline', 'insights', 'distribution']) {
-      qc.invalidateQueries({ queryKey: [key] })
-    }
-  }
+  // Refresh current task when the tab regains focus
+  useFocusEffect(useCallback(() => {
+    setCurrent(getCurrentTask())
+  }, []))
 
   // Live elapsed time computed from startedAt — survives backgrounding
   useEffect(() => {
@@ -162,59 +157,38 @@ export default function TimerScreen() {
     return () => { if (tickRef.current) clearInterval(tickRef.current) }
   }, [current?.id])
 
-  const handleStart = async () => {
-    // Optimistic: show the running timer immediately, anchored to the device
-    // clock, so the display doesn't wait on the network or server clock skew.
-    const localStartedAt = new Date().toISOString()
-    qc.setQueryData(['current-task'], {
-      id: 'optimistic',
-      title: 'Untitled',
-      categoryId: null,
-      tag: 'neutral',
-      startedAt: localStartedAt,
-      endedAt: null,
-      userId: '',
-    } satisfies TaskEntry)
-    try {
-      const res = await startTask()
-      // Keep the local start time for display so the timer doesn't jump.
-      qc.setQueryData(['current-task'], { ...res.task, startedAt: localStartedAt })
-      refreshData()
-    } catch {
-      qc.setQueryData(['current-task'], null)
-      Alert.alert('Error', 'Could not start the timer')
-    }
+  const handleStart = () => {
+    // Writes to local DB instantly — no network needed
+    const result = startTask()
+    setCurrent(result.task)
   }
 
   // Stop ends the time span immediately, then asks for details
-  const handleStop = async () => {
-    if (!current || current.id === 'optimistic') return
-    try {
-      const stopped = await stopTask(current.id)
-      qc.setQueryData(['current-task'], null)
+  const handleStop = () => {
+    if (!current) return
+    const stopped = stopTask(current.id)
+    setCurrent(null)
+    if (stopped) {
       setStopPrompt(pick(STOP_PROMPTS))
       setPendingEntry(stopped)
       setTitle('')
       setCategoryId(null)
       setTag('neutral')
       setNotes('')
-    } catch {
-      Alert.alert('Error', 'Could not stop the timer')
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!pendingEntry) return
     if (!title.trim()) { Alert.alert('', 'What did you work on? Enter a title.'); return }
     setSaving(true)
     try {
-      await editTask(pendingEntry.id, {
+      editTask(pendingEntry.id, {
         title: title.trim(),
         categoryId,
         tag,
         notes: notes.trim() || null,
       })
-      refreshData()
       setPendingEntry(null)
     } catch {
       Alert.alert('Error', 'Could not save the entry')
@@ -230,10 +204,9 @@ export default function TimerScreen() {
       {
         text: 'Discard',
         style: 'destructive',
-        onPress: async () => {
+        onPress: () => {
           try {
-            await deleteTask(pendingEntry.id)
-            refreshData()
+            deleteTask(pendingEntry.id)
             setPendingEntry(null)
           } catch {
             Alert.alert('Error', 'Could not discard the entry')
@@ -315,6 +288,8 @@ export default function TimerScreen() {
     <FadeIn>
       <View style={[styles.container, styles.centered]}>
         <AuroraBackground accent={colors.primary} />
+        <SyncIndicator />
+        <View style={{ height: spacing.md }} />
         <BigButton label="Start" color={colors.primary} onPress={handleStart} pulse />
         <Text style={styles.hint}>{idleHint}{'\n'}Tap Start — details come later.</Text>
       </View>

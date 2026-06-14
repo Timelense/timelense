@@ -67,6 +67,8 @@ export interface Distribution {
   from: string
   to: string
   buckets: DistributionBucket[]
+  isCached?: boolean
+  fetchedAt?: string
 }
 
 export interface DayInsight {
@@ -100,4 +102,6 @@ export interface PeriodInsights {
   topCategories: CategoryInsight[]
   deltaTotalMinutes: number | null
   deltaScore: number | null
+  isCached?: boolean
+  fetchedAt?: string
 }

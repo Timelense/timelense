@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Easing } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg'
 import { colors, typography, spacing, radius } from '../theme'
+import { SyncIndicator } from './SyncIndicator'
 
 // Mini lens-clock logo (same motif as the app icon)
 export function BrandLogo({ size = 28 }: { size?: number }) {
@@ -64,8 +65,11 @@ export function BrandHeader({ screen }: { screen: string }) {
         </Animated.View>
         <BrandWordmark />
       </View>
-      <View style={styles.screenChip}>
-        <Text style={styles.screenChipText}>{screen}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <SyncIndicator />
+        <View style={styles.screenChip}>
+          <Text style={styles.screenChipText}>{screen}</Text>
+        </View>
       </View>
     </View>
   )

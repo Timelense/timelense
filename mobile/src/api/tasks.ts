@@ -1,8 +1,37 @@
-import { apiRequest } from './client'
-import type { TaskEntry, StartTaskResponse } from '@timelense/shared'
+/**
+ * Tasks API — offline-first.
+ *
+ * All reads come from the local SQLite database.
+ * All writes go to SQLite first + enqueue a sync operation.
+ * The sync engine pushes mutations to the server in the background.
+ *
+ * Function signatures are preserved so screens need minimal changes.
+ */
+import {
+  getLocalCurrentTask,
+  createLocalTask,
+  stopLocalTask,
+  editLocalTask,
+  deleteLocalTask,
+  getLocalTasks,
+  getLocalTimeline,
+  findTaskByLocalId,
+  findTaskByServerId,
+} from '../db/taskRepo'
+import { scheduleSyncSoon } from '../sync/syncEngine'
+import type { TaskEntry, StartTaskResponse, DailyTimeline } from '@timelense/shared'
 
-export function getCurrentTask(): Promise<TaskEntry | null> {
-  return apiRequest('/tasks/current')
+// TODO: Get actual userId from auth context. For now, we read it from the
+// first task or use a placeholder. This will be wired up properly when we
+// integrate the SyncProvider with the AuthProvider.
+let _cachedUserId = 'current-user'
+export function setLocalUserId(id: string): void {
+  _cachedUserId = id
+}
+
+export function getCurrentTask(): TaskEntry | null {
+  const task = getLocalCurrentTask()
+  return task ? stripSyncMeta(task) : null
 }
 
 export function startTask(body: {
@@ -10,12 +39,18 @@ export function startTask(body: {
   categoryId?: string
   tag?: string
   notes?: string
-} = {}): Promise<StartTaskResponse> {
-  return apiRequest('/tasks/start', 'POST', body)
+} = {}): StartTaskResponse {
+  const result = createLocalTask(_cachedUserId, body)
+  scheduleSyncSoon()
+  return result
 }
 
-export function stopTask(id: string): Promise<TaskEntry> {
-  return apiRequest(`/tasks/${id}/stop`, 'PATCH')
+export function stopTask(localId: string): TaskEntry | null {
+  // localId might be a server_id or local_id — resolve it
+  const resolved = resolveLocalId(localId)
+  const stopped = stopLocalTask(resolved)
+  if (stopped) scheduleSyncSoon()
+  return stopped
 }
 
 export function listTasks(params: {
@@ -25,15 +60,12 @@ export function listTasks(params: {
   tag?: string
   limit?: number
   offset?: number
-}): Promise<TaskEntry[]> {
-  const qs = new URLSearchParams()
-  if (params.from) qs.set('from', params.from)
-  if (params.to) qs.set('to', params.to)
-  if (params.categoryId) qs.set('categoryId', params.categoryId)
-  if (params.tag) qs.set('tag', params.tag)
-  if (params.limit != null) qs.set('limit', String(params.limit))
-  if (params.offset != null) qs.set('offset', String(params.offset))
-  return apiRequest(`/tasks?${qs}`)
+}): TaskEntry[] {
+  return getLocalTasks(params).map(stripSyncMeta)
+}
+
+export function getTimeline(date: string): DailyTimeline {
+  return getLocalTimeline(date)
 }
 
 export function editTask(id: string, body: Partial<{
@@ -43,10 +75,40 @@ export function editTask(id: string, body: Partial<{
   notes: string | null
   startedAt: string
   endedAt: string | null
-}>): Promise<TaskEntry> {
-  return apiRequest(`/tasks/${id}`, 'PATCH', body)
+}>): TaskEntry | null {
+  const resolved = resolveLocalId(id)
+  const updated = editLocalTask(resolved, body)
+  if (updated) scheduleSyncSoon()
+  return updated
 }
 
-export function deleteTask(id: string): Promise<void> {
-  return apiRequest(`/tasks/${id}`, 'DELETE')
+export function deleteTask(id: string): boolean {
+  const resolved = resolveLocalId(id)
+  const deleted = deleteLocalTask(resolved)
+  if (deleted) scheduleSyncSoon()
+  return deleted
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve an ID that might be a server_id or local_id to the local_id.
+ * Screens may hold server IDs from previously synced entries.
+ */
+function resolveLocalId(id: string): string {
+  const task = findTaskByLocalId(id)
+  if (task) return id
+  const taskByServer = findTaskByServerId(id)
+  if (taskByServer) return taskByServer.localId
+  return id
+}
+
+/**
+ * Strip sync-internal fields before returning to the UI layer.
+ */
+function stripSyncMeta(task: TaskEntry & { syncStatus?: string; localId?: string }): TaskEntry {
+  const { syncStatus, localId, ...entry } = task
+  return entry
 }

@@ -33,6 +33,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await clearToken()
+    try {
+      const { resetDatabase } = require('../db/database')
+      const { clearCheckpoint } = require('../db/healthCheck')
+      resetDatabase()
+      await clearCheckpoint()
+    } catch (e) {
+      console.warn('Failed to clear database on sign out:', e)
+    }
     setIsSignedIn(false)
   }
 
