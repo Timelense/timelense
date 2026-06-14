@@ -17,6 +17,7 @@ import { getTimeline, editTask, deleteTask } from '../api/tasks'
 import { getCategories } from '../api/categories'
 import { TagSelector } from '../components/TagSelector'
 import { SyncIndicator } from '../components/SyncIndicator'
+import { Loader } from '../components/Loader'
 import { colors, typography, spacing, radius } from '../theme'
 
 const TAG_COLOR: Record<string, string> = {
@@ -53,11 +54,28 @@ function friendlyDate(dateStr: string): string {
   return new Date(`${dateStr}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-// Minutes of untracked time between two entries (returns 0 when overlapping)
-function gapMinutes(prev: DailyTimelineEntry, next: DailyTimelineEntry): number {
+// Seconds of untracked time between two entries (returns 0 when overlapping
+// or below a small floor that hides clock-jitter noise).
+const MIN_GAP_SECONDS = 5
+function gapSeconds(prev: DailyTimelineEntry, next: DailyTimelineEntry): number {
   if (!prev.endedAt) return 0
-  const gap = (new Date(next.startedAt).getTime() - new Date(prev.endedAt).getTime()) / 60000
-  return gap > 1 ? Math.round(gap) : 0
+  const diffMs = new Date(next.startedAt).getTime() - new Date(prev.endedAt).getTime()
+  if (diffMs <= 0) return 0
+  const seconds = Math.floor(diffMs / 1000)
+  return seconds >= MIN_GAP_SECONDS ? seconds : 0
+}
+
+// Human-friendly gap: "30s", "1m 20s", "2h 5m". Seconds are dropped once we cross the minute mark.
+function fmtGap(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const totalMinutes = Math.floor(seconds / 60)
+  const remSeconds = seconds % 60
+  if (totalMinutes < 60) {
+    return remSeconds > 0 ? `${totalMinutes}m ${remSeconds}s` : `${totalMinutes}m`
+  }
+  const hours = Math.floor(totalMinutes / 60)
+  const remMinutes = totalMinutes % 60
+  return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`
 }
 
 // Staggered fade/slide-in for list rows
@@ -106,9 +124,21 @@ export default function TimelineScreen() {
   const [editNotes, setEditNotes] = useState('')
   const [editTag, setEditTag] = useState<ProductivityTag>('neutral')
 
-  // Load timeline from local DB (synchronous)
+  // Load timeline from local DB (synchronous).
+  // We hold the loader for a tick so the user perceives the refresh instead
+  // of seeing the list snap between dates.
   const loadTimeline = useCallback(() => {
-    setData(getTimeline(date))
+    setIsLoading(true)
+    const MIN_LOADER_MS = 250
+    const startedAt = Date.now()
+    const fresh = getTimeline(date)
+    const elapsed = Date.now() - startedAt
+    const finish = () => {
+      setData(fresh)
+      setIsLoading(false)
+    }
+    if (elapsed >= MIN_LOADER_MS) finish()
+    else setTimeout(finish, MIN_LOADER_MS - elapsed)
   }, [date])
 
   // Reload when date changes
@@ -156,7 +186,7 @@ export default function TimelineScreen() {
   const renderEntry = ({ item, index }: { item: DailyTimelineEntry; index: number }) => {
     const entries = data?.entries ?? []
     const prev = index > 0 ? entries[index - 1] : null
-    const gap = prev ? gapMinutes(prev, item) : 0
+    const gap = prev ? gapSeconds(prev, item) : 0
     const cat = item.categoryId ? catById.get(item.categoryId) : undefined
     const tagColor = TAG_COLOR[item.tag]
     const running = !item.endedAt
@@ -166,7 +196,7 @@ export default function TimelineScreen() {
         {gap > 0 && (
           <View style={styles.gapRow}>
             <View style={styles.gapLine} />
-            <Text style={styles.gapText}>{fmtMinutes(gap)} untracked</Text>
+            <Text style={styles.gapText}>{fmtGap(gap)} untracked</Text>
             <View style={styles.gapLine} />
           </View>
         )}
@@ -185,7 +215,9 @@ export default function TimelineScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.cardTop}>
-              <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+              <Text style={[styles.cardTitle, running && styles.cardTitleRunning]} numberOfLines={1}>
+                {running && (item.title === 'Untitled' || !item.title) ? 'Current task' : item.title}
+              </Text>
               <View style={[styles.durationChip, { backgroundColor: `${tagColor}26` }]}>
                 <Text style={[styles.durationText, { color: tagColor }]}>
                   {running ? 'now' : fmtMinutes(item.durationMinutes)}
@@ -262,7 +294,9 @@ export default function TimelineScreen() {
 
       {/* Entry list */}
       {isLoading ? (
-        <View style={styles.emptyState}><Text style={styles.emptyText}>Loading…</Text></View>
+        <View style={styles.loadingState}>
+          <Loader size="large" color={colors.accent} label="Loading timeline…" />
+        </View>
       ) : data?.entries.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>A perfectly blank day</Text>
@@ -357,6 +391,7 @@ const styles = StyleSheet.create({
   cardRunning: { borderColor: colors.productive },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardTitle: { flex: 1, fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
+  cardTitleRunning: { fontStyle: 'italic', color: colors.accent },
   durationChip: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full },
   durationText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, fontVariant: ['tabular-nums'] },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
@@ -369,6 +404,8 @@ const styles = StyleSheet.create({
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { fontSize: typography.size.lg, color: colors.textSecondary },
   emptyHint: { fontSize: typography.size.sm, color: colors.textMuted },
+  // loading state
+  loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // edit sheet
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg + 8, borderTopRightRadius: radius.lg + 8, paddingBottom: spacing.xl },
