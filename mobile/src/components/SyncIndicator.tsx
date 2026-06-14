@@ -7,12 +7,13 @@
  * - Spinner when actively syncing
  * - Warning when sync error or offline
  */
-import React from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native'
 import { useSyncStatus } from '../sync/syncStatus'
-import { colors, typography, spacing, radius } from '../theme'
+import { useTheme, typography, spacing, radius, type Palette } from '../theme'
 
 function SpinnerDot() {
+  const { colors } = useTheme()
   const spin = React.useRef(new Animated.Value(0)).current
 
   React.useEffect(() => {
@@ -34,7 +35,7 @@ function SpinnerDot() {
   })
 
   return (
-    <Animated.Text style={[styles.icon, { transform: [{ rotate }] }]}>
+    <Animated.Text style={[{ fontSize: 12, color: colors.textSecondary }, { transform: [{ rotate }] }]}>
       ↻
     </Animated.Text>
   )
@@ -42,6 +43,8 @@ function SpinnerDot() {
 
 export function SyncIndicator() {
   const { isOnline, isSyncing, pendingOpsCount, lastError } = useSyncStatus()
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
 
   // Fully synced and online — show nothing
   if (isOnline && !isSyncing && pendingOpsCount === 0 && !lastError) {
@@ -85,6 +88,8 @@ export function SyncIndicator() {
  */
 export function SyncDot() {
   const { isOnline, isSyncing, pendingOpsCount, lastError } = useSyncStatus()
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
 
   if (isOnline && !isSyncing && pendingOpsCount === 0 && !lastError) {
     return null
@@ -99,14 +104,14 @@ export function SyncDot() {
   return <View style={[styles.dot, { backgroundColor: dotColor }]} />
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    backgroundColor: colors.surface,
+    paddingVertical: 4,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.border,

@@ -61,12 +61,12 @@ function Blob({
 
 // WebGL-style aurora backdrop: layered drifting gradient glows.
 // Place as the first child of a screen container (absolute fill).
-export function AuroraBackground({ accent = '#6366F1' }: { accent?: string }) {
+export function AuroraBackground({ accent = '#7C6BF5' }: { accent?: string }) {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Blob color={accent} size={420} style={{ top: -120, left: -100 }} duration={6000} drift={50} />
-      <Blob color="#A78BFA" size={360} style={{ bottom: -80, right: -120 }} duration={7500} drift={-40} />
-      <Blob color="#34D399" size={260} style={{ top: '38%', right: -90 }} duration={9000} drift={30} />
+      <Blob color="#FF9EC4" size={360} style={{ bottom: -80, right: -120 }} duration={7500} drift={-40} />
+      <Blob color="#2FC79B" size={260} style={{ top: '38%', right: -90 }} duration={9000} drift={30} />
     </View>
   )
 }

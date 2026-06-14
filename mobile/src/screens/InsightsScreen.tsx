@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import Svg, { Rect, G, Circle, Text as SvgText } from 'react-native-svg'
 import { getInsights, getDistribution } from '../api/analytics'
-import { colors, typography, spacing, radius } from '../theme'
+import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
 import type { DayInsight, PeriodInsights } from '@timelense/shared'
 import { Loader } from '../components/Loader'
 
@@ -39,6 +39,7 @@ const RING_C = 2 * Math.PI * RING_R
 const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
 function ScoreRing({ score }: { score: number | null }) {
+  const { colors } = useTheme()
   const anim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
@@ -81,9 +82,10 @@ function ScoreRing({ score }: { score: number | null }) {
         />
         <SvgText
           x={RING_SIZE / 2}
-          y={RING_SIZE / 2 + 7}
+          y={RING_SIZE / 2 + 8}
           textAnchor="middle"
-          fontSize={22}
+          fontSize={26}
+          fontFamily={fonts.bold}
           fontWeight="bold"
           fill={colors.text}
         >
@@ -101,6 +103,7 @@ const LABEL_H = 18
 const BAR_GAP = 5
 
 function BarChart({ days, width }: { days: DayInsight[]; width: number }) {
+  const { colors } = useTheme()
   const max = Math.max(...days.map((d) => d.totalMinutes), 1)
   const barW = (width - BAR_GAP * (days.length - 1)) / days.length
   const showLabels = days.length <= 7 ? 1 : Math.ceil(days.length / 8)
@@ -154,6 +157,7 @@ const DONUT_R = (DONUT_SIZE - DONUT_STROKE) / 2
 const DONUT_C = 2 * Math.PI * DONUT_R
 
 function TagDonut({ productive, nonProductive, neutral }: { productive: number; nonProductive: number; neutral: number }) {
+  const { colors } = useTheme()
   const total = productive + nonProductive + neutral
   if (total === 0) return null
   const segments = [
@@ -189,7 +193,8 @@ function TagDonut({ productive, nonProductive, neutral }: { productive: number; 
         x={DONUT_SIZE / 2}
         y={DONUT_SIZE / 2 + 1}
         textAnchor="middle"
-        fontSize={15}
+        fontSize={16}
+        fontFamily={fonts.bold}
         fontWeight="bold"
         fill={colors.text}
       >
@@ -211,6 +216,7 @@ function TagDonut({ productive, nonProductive, neutral }: { productive: number; 
 // ---- animated horizontal share bar -------------------------------------------
 
 function ShareBar({ share, color }: { share: number; color: string }) {
+  const { colors } = useTheme()
   const anim = useRef(new Animated.Value(0)).current
   useEffect(() => {
     Animated.timing(anim, {
@@ -221,15 +227,14 @@ function ShareBar({ share, color }: { share: number; color: string }) {
     }).start()
   }, [share])
   return (
-    <View style={styles.barBg}>
+    <View style={{ height: 8, backgroundColor: colors.divider, borderRadius: 4, overflow: 'hidden' }}>
       <Animated.View
-        style={[
-          styles.barFill,
-          {
-            backgroundColor: color,
-            width: anim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }),
-          },
-        ]}
+        style={{
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: color,
+          width: anim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }),
+        }}
       />
     </View>
   )
@@ -238,6 +243,8 @@ function ShareBar({ share, color }: { share: number; color: string }) {
 // ---- stat card ----------------------------------------------------------------
 
 function StatCard({ label, value, delta, deltaSuffix }: { label: string; value: string; delta?: number | null; deltaSuffix?: string }) {
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
   return (
     <View style={styles.statCard}>
       <Text style={styles.statValue}>{value}</Text>
@@ -254,6 +261,8 @@ function StatCard({ label, value, delta, deltaSuffix }: { label: string; value: 
 // ---- screen -------------------------------------------------------------------
 
 export default function InsightsScreen() {
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
   const [period, setPeriod] = useState<'week' | 'month'>('week')
   const [offset, setOffset] = useState(0)
   const [chartWidth, setChartWidth] = useState(0)
@@ -461,7 +470,7 @@ export default function InsightsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
   cachedBanner: {
@@ -489,37 +498,37 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.medium,
   },
   // toggle
-  toggleRow: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md, padding: 3, borderWidth: 1, borderColor: colors.border },
-  toggleBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.sm, alignItems: 'center' },
+  toggleRow: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.full, padding: 4, borderWidth: 1, borderColor: colors.border },
+  toggleBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.full, alignItems: 'center' },
   toggleBtnActive: { backgroundColor: colors.primary },
-  toggleText: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary },
+  toggleText: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, color: colors.textSecondary },
   toggleTextActive: { color: colors.white },
   // period nav
   periodNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  navBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  navBtn: { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.5 },
-  navArrow: { fontSize: typography.size.xl, color: colors.accent, lineHeight: 24 },
-  periodLabel: { fontSize: typography.size.md, fontWeight: typography.weight.medium, color: colors.text },
+  navArrow: { fontSize: typography.size.xl, color: colors.primary, lineHeight: 24 },
+  periodLabel: { fontSize: typography.size.md, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, color: colors.text },
   // empty state
-  emptyCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  emptyTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.semibold, color: colors.text },
-  emptyText: { fontSize: typography.size.sm, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+  emptyCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: spacing.sm, ...shadow.card },
+  emptyTitle: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
+  emptyText: { fontSize: typography.size.sm, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, fontWeight: typography.weight.medium },
   // score card
-  scoreCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, borderWidth: 1, borderColor: colors.border },
+  scoreCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, borderWidth: 1, borderColor: colors.border, ...shadow.card },
   scoreSide: { flex: 1, gap: 4 },
-  scoreTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.semibold, color: colors.text },
-  scoreDelta: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
-  scoreDeltaMuted: { fontSize: typography.size.sm, color: colors.textMuted },
-  scoreHint: { fontSize: typography.size.xs, color: colors.textMuted },
+  scoreTitle: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
+  scoreDelta: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.bold },
+  scoreDeltaMuted: { fontSize: typography.size.sm, color: colors.textMuted, fontWeight: typography.weight.medium },
+  scoreHint: { fontSize: typography.size.xs, color: colors.textMuted, fontWeight: typography.weight.medium },
   // stat cards
   statRow: { flexDirection: 'row', gap: spacing.md },
-  statCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: 2 },
-  statValue: { fontSize: typography.size.xxl, fontWeight: typography.weight.bold, color: colors.text, fontVariant: ['tabular-nums'] },
-  statLabel: { fontSize: typography.size.sm, color: colors.textSecondary },
-  statDelta: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, marginTop: 2 },
+  statCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: 2, ...shadow.card },
+  statValue: { fontSize: typography.size.xxl, fontFamily: fonts.bold, fontWeight: typography.weight.heavy, color: colors.text, fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: typography.size.sm, color: colors.textSecondary, fontFamily: fonts.medium, fontWeight: typography.weight.medium },
+  statDelta: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, marginTop: 2 },
   // sections
-  section: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
-  sectionTitle: { fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text, marginBottom: spacing.sm },
+  section: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, ...shadow.card },
+  sectionTitle: { fontSize: typography.size.md, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text, marginBottom: spacing.sm },
   chartContainer: { gap: spacing.sm },
   legend: { flexDirection: 'row', gap: spacing.md, justifyContent: 'center' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -530,7 +539,7 @@ const styles = StyleSheet.create({
   donutLegend: { flex: 1, gap: spacing.sm },
   donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   donutLegendLabel: { flex: 1, fontSize: typography.size.sm, color: colors.textSecondary },
-  donutLegendValue: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text, fontVariant: ['tabular-nums'] },
+  donutLegendValue: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, color: colors.text, fontVariant: ['tabular-nums'] },
   // category bars
   catDot: { width: 10, height: 10, borderRadius: 5 },
   catName: { flex: 1, fontSize: typography.size.sm, color: colors.text },

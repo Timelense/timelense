@@ -1,12 +1,21 @@
+import { useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native'
-import { colors, typography, spacing, radius } from '../theme'
+import { useTheme, typography, spacing, radius, fonts, type Palette, type ThemePreference } from '../theme'
 import { useAuth } from '../contexts/auth'
 import { logout } from '../api/auth'
 import { useSyncStatus } from '../sync/syncStatus'
 
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'Auto' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
+
 export default function SettingsScreen() {
   const { signOut } = useAuth()
   const { pendingOpsCount } = useSyncStatus()
+  const { colors, preference, setPreference } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
 
   const handleLogout = () => {
     if (pendingOpsCount > 0) {
@@ -49,6 +58,24 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardLabel}>Appearance</Text>
+        <View style={styles.segment}>
+          {THEME_OPTIONS.map((opt) => {
+            const active = preference === opt.value
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+                onPress={() => setPreference(opt.value)}
+              >
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{opt.label}</Text>
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      </View>
+
+      <View style={styles.card}>
         <TouchableOpacity style={styles.row} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
@@ -59,12 +86,18 @@ export default function SettingsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.md, gap: spacing.md },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg },
-  appName: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, color: colors.text },
-  tagline: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: 4 },
+  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.sm },
+  appName: { fontSize: typography.size.xl, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
+  tagline: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: 4, fontFamily: fonts.medium, fontWeight: typography.weight.medium },
+  cardLabel: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.bold, color: colors.textSecondary },
+  segment: { flexDirection: 'row', backgroundColor: colors.surfaceRaised, borderRadius: radius.full, padding: 4 },
+  segmentBtn: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.full, alignItems: 'center' },
+  segmentBtnActive: { backgroundColor: colors.primary },
+  segmentText: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, color: colors.textSecondary },
+  segmentTextActive: { color: colors.white },
   row: { alignItems: 'center' },
-  logoutText: { color: colors.danger, fontSize: typography.size.md, fontWeight: typography.weight.semibold },
-  version: { textAlign: 'center', color: colors.textMuted, fontSize: typography.size.xs, marginTop: 'auto' as never, marginBottom: spacing.md },
+  logoutText: { color: colors.danger, fontSize: typography.size.md, fontFamily: fonts.semibold, fontWeight: typography.weight.bold },
+  version: { textAlign: 'center', color: colors.textMuted, fontSize: typography.size.xs, marginTop: 'auto' as never, marginBottom: spacing.md, fontWeight: typography.weight.medium },
 })

@@ -1,5 +1,5 @@
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native'
-import { colors, spacing } from '../theme'
+import { useTheme, spacing } from '../theme'
 
 type LoaderSize = 'small' | 'large'
 
@@ -23,24 +23,27 @@ interface LoaderProps {
  */
 export function Loader({
   size = 'small',
-  color = colors.accent,
+  color,
   fullscreen = false,
   label,
   labelStyle,
 }: LoaderProps) {
+  const { colors } = useTheme()
+  const spinnerColor = color ?? colors.accent
+  const labelColor = { color: colors.textSecondary }
   if (fullscreen) {
     return (
       <View style={styles.fullscreen}>
-        <ActivityIndicator size={size} color={color} />
-        {label != null && <Text style={[styles.label, labelStyle]}>{label}</Text>}
+        <ActivityIndicator size={size} color={spinnerColor} />
+        {label != null && <Text style={[styles.label, labelColor, labelStyle]}>{label}</Text>}
       </View>
     )
   }
 
   return (
     <View style={styles.inline}>
-      <ActivityIndicator size={size} color={color} />
-      {label != null && <Text style={[styles.label, labelStyle]}>{label}</Text>}
+      <ActivityIndicator size={size} color={spinnerColor} />
+      {label != null && <Text style={[styles.label, labelColor, labelStyle]}>{label}</Text>}
     </View>
   )
 }
@@ -54,5 +57,5 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-  label: { color: colors.textSecondary, fontSize: 13 },
+  label: { fontSize: 13 },
 })

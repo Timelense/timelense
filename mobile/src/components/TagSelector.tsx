@@ -1,12 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import type { ProductivityTag } from '@timelense/shared'
-import { colors, typography, spacing, radius } from '../theme'
-
-const TAGS: { value: ProductivityTag; label: string; color: string }[] = [
-  { value: 'productive', label: 'Productive', color: colors.productive },
-  { value: 'neutral', label: 'Neutral', color: colors.neutral },
-  { value: 'non-productive', label: 'Non-Productive', color: colors.nonProductive },
-]
+import { useTheme, typography, spacing, radius, fonts } from '../theme'
 
 interface Props {
   value: ProductivityTag
@@ -14,9 +8,15 @@ interface Props {
 }
 
 export function TagSelector({ value, onChange }: Props) {
+  const { colors } = useTheme()
+  const tags: { value: ProductivityTag; label: string; color: string }[] = [
+    { value: 'productive', label: 'Productive', color: colors.productive },
+    { value: 'neutral', label: 'Neutral', color: colors.neutral },
+    { value: 'non-productive', label: 'Non-Productive', color: colors.nonProductive },
+  ]
   return (
     <View style={styles.row}>
-      {TAGS.map((tag) => {
+      {tags.map((tag) => {
         const active = value === tag.value
         return (
           <TouchableOpacity
@@ -36,10 +36,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: spacing.sm },
   chip: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     borderRadius: radius.full,
-    borderWidth: 1.5,
+    borderWidth: 2,
     alignItems: 'center',
   },
-  label: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
+  label: { fontSize: typography.size.xs, fontFamily: fonts.semibold, fontWeight: typography.weight.bold },
 })

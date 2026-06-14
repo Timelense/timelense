@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { View, Text, TouchableOpacity, Modal, FlatList, TextInput, StyleSheet, Alert } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Category } from '@timelense/shared'
 import { getCategories, createCategory } from '../api/categories'
-import { colors, typography, spacing, radius, categoryPalette } from '../theme'
+import { useTheme, typography, spacing, radius, categoryPalette, type Palette } from '../theme'
 
 const COLOR_PALETTE = [...categoryPalette]
 
@@ -14,6 +14,8 @@ interface Props {
 
 export function CategoryPicker({ value, onChange }: Props) {
   const qc = useQueryClient()
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -143,8 +145,8 @@ export function CategoryPicker({ value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
-  trigger: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  trigger: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md },
   triggerText: { fontSize: typography.size.md, color: colors.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   dot: { width: 10, height: 10, borderRadius: 5 },
