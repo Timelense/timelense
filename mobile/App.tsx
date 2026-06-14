@@ -3,6 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { NavigationContainer, DarkTheme } from '@react-navigation/native'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './src/contexts/auth'
+import { SyncProvider } from './src/sync/syncStatus'
 import RootNavigator from './src/navigation/RootNavigator'
 import { colors } from './src/theme'
 
@@ -29,10 +30,12 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <AuthProvider>
-          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-          <NavigationContainer theme={navTheme}>
-            <RootNavigator />
-          </NavigationContainer>
+          <SyncProvider>
+            <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+            <NavigationContainer theme={navTheme}>
+              <RootNavigator />
+            </NavigationContainer>
+          </SyncProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </QueryClientProvider>

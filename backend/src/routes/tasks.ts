@@ -32,6 +32,49 @@ const ListQuery = z.object({
   tag: z.enum(PRODUCTIVE_TAG).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
+  updatedSince: z.string().datetime().optional(),
+})
+
+const SyncOp = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('create'),
+    tempId: z.string(),
+    data: z.object({
+      title: z.string().min(1).max(255).optional().default('Untitled'),
+      categoryId: z.string().uuid().optional(),
+      tag: z.enum(PRODUCTIVE_TAG).optional().default('neutral'),
+      startedAt: z.string().datetime().optional(),
+      endedAt: z.string().datetime().optional(),
+      notes: z.string().optional(),
+    }),
+  }),
+  z.object({
+    op: z.literal('update'),
+    id: z.string().uuid(),
+    data: z.object({
+      title: z.string().min(1).max(255).optional(),
+      categoryId: z.string().uuid().nullable().optional(),
+      tag: z.enum(PRODUCTIVE_TAG).optional(),
+      notes: z.string().nullable().optional(),
+      startedAt: z.string().datetime().optional(),
+      endedAt: z.string().datetime().nullable().optional(),
+    }),
+  }),
+  z.object({
+    op: z.literal('stop'),
+    id: z.string().uuid(),
+    data: z.object({
+      endedAt: z.string().datetime().optional(),
+    }).optional(),
+  }),
+  z.object({
+    op: z.literal('delete'),
+    id: z.string().uuid(),
+  }),
+])
+
+const SyncBody = z.object({
+  operations: z.array(SyncOp),
 })
 
 export async function taskRoutes(app: FastifyInstance) {
@@ -62,6 +105,9 @@ export async function taskRoutes(app: FastifyInstance) {
     }
     if (q.categoryId) conditions.push(eq(tasks.categoryId, q.categoryId))
     if (q.tag) conditions.push(eq(tasks.tag, q.tag))
+    if (q.updatedSince) {
+      conditions.push(gte(tasks.updatedAt, new Date(q.updatedSince)))
+    }
 
     const rows = await db
       .select()
@@ -125,7 +171,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
     const [updated] = await db
       .update(tasks)
-      .set({ endedAt: sql`now()` })
+      .set({ endedAt: sql`now()`, updatedAt: sql`now()` })
       .where(eq(tasks.id, id))
       .returning()
 
@@ -170,6 +216,7 @@ export async function taskRoutes(app: FastifyInstance) {
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.startedAt !== undefined && { startedAt }),
         ...(body.endedAt !== undefined && { endedAt }),
+        updatedAt: sql`now()`,
       })
       .where(and(eq(tasks.id, id), eq(tasks.userId, request.userId)))
       .returning()
@@ -186,6 +233,118 @@ export async function taskRoutes(app: FastifyInstance) {
 
     await db.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, request.userId)))
     return reply.code(204).send()
+  })
+
+  // POST /tasks/sync — batch sync endpoint
+  app.post('/sync', async (request, reply) => {
+    const { operations } = SyncBody.parse(request.body)
+    const results = []
+
+    for (const op of operations) {
+      try {
+        if (op.op === 'create') {
+          if (op.data.categoryId) {
+            const err = await validateCategoryOwnership(op.data.categoryId, request.userId)
+            if (err) {
+              results.push({ tempId: op.tempId, status: 'error', error: err })
+              continue
+            }
+          }
+
+          const [newTask] = await db
+            .insert(tasks)
+            .values({
+              userId: request.userId,
+              categoryId: op.data.categoryId,
+              title: op.data.title,
+              tag: op.data.tag,
+              notes: op.data.notes,
+              startedAt: op.data.startedAt ? new Date(op.data.startedAt) : undefined,
+              endedAt: op.data.endedAt ? new Date(op.data.endedAt) : undefined,
+              updatedAt: new Date(),
+            })
+            .returning()
+
+          results.push({ tempId: op.tempId, serverId: newTask.id, status: 'created' })
+        } else if (op.op === 'stop') {
+          const existing = await findOwned(op.id, request.userId)
+          if (!existing) {
+            results.push({ id: op.id, status: 'error', error: 'not_found' })
+            continue
+          }
+          if (existing.endedAt !== null) {
+            results.push({ id: op.id, status: 'stopped' })
+            continue
+          }
+
+          const endedAt = op.data?.endedAt ? new Date(op.data.endedAt) : new Date()
+          await db
+            .update(tasks)
+            .set({ endedAt, updatedAt: sql`now()` })
+            .where(eq(tasks.id, op.id))
+
+          results.push({ id: op.id, status: 'stopped' })
+        } else if (op.op === 'update') {
+          const existing = await findOwned(op.id, request.userId)
+          if (!existing) {
+            results.push({ id: op.id, status: 'error', error: 'not_found' })
+            continue
+          }
+
+          if (op.data.categoryId) {
+            const err = await validateCategoryOwnership(op.data.categoryId, request.userId)
+            if (err) {
+              results.push({ id: op.id, status: 'error', error: err })
+              continue
+            }
+          }
+
+          const startedAt = op.data.startedAt ? new Date(op.data.startedAt) : existing.startedAt
+          const endedAt = op.data.endedAt !== undefined
+            ? (op.data.endedAt ? new Date(op.data.endedAt) : null)
+            : existing.endedAt
+
+          if (endedAt !== null && endedAt <= startedAt) {
+            results.push({ id: op.id, status: 'error', error: 'endedAt must be after startedAt' })
+            continue
+          }
+
+          await db
+            .update(tasks)
+            .set({
+              ...(op.data.title !== undefined && { title: op.data.title }),
+              ...(op.data.categoryId !== undefined && { categoryId: op.data.categoryId }),
+              ...(op.data.tag !== undefined && { tag: op.data.tag }),
+              ...(op.data.notes !== undefined && { notes: op.data.notes }),
+              ...(op.data.startedAt !== undefined && { startedAt }),
+              ...(op.data.endedAt !== undefined && { endedAt }),
+              updatedAt: sql`now()`,
+            })
+            .where(eq(tasks.id, op.id))
+
+          results.push({ id: op.id, status: 'updated' })
+        } else if (op.op === 'delete') {
+          const existing = await findOwned(op.id, request.userId)
+          if (!existing) {
+            results.push({ id: op.id, status: 'deleted' })
+            continue
+          }
+
+          await db.delete(tasks).where(eq(tasks.id, op.id))
+          results.push({ id: op.id, status: 'deleted' })
+        }
+      } catch (err) {
+        results.push({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'unknown',
+        })
+      }
+    }
+
+    return reply.send({
+      results,
+      serverTime: new Date().toISOString(),
+    })
   })
 }
 

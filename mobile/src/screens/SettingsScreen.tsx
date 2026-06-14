@@ -2,11 +2,32 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { colors, typography, spacing, radius } from '../theme'
 import { useAuth } from '../contexts/auth'
 import { logout } from '../api/auth'
+import { useSyncStatus } from '../sync/syncStatus'
 
 export default function SettingsScreen() {
   const { signOut } = useAuth()
+  const { pendingOpsCount } = useSyncStatus()
 
   const handleLogout = () => {
+    if (pendingOpsCount > 0) {
+      Alert.alert(
+        'Warning: Unsynced Tasks',
+        `You have ${pendingOpsCount} task(s) that haven't been saved to the server yet. If you log out now, these tasks will be permanently lost.\n\nAre you sure you want to log out?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Log Out Anyway',
+            style: 'destructive',
+            onPress: async () => {
+              await logout()
+              signOut()
+            },
+          },
+        ]
+      )
+      return
+    }
+
     Alert.alert('Log out?', 'You can sign back in anytime.', [
       { text: 'Cancel', style: 'cancel' },
       {

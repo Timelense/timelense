@@ -73,3 +73,86 @@ describe('edit validation', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('batch sync', () => {
+  it('processes batch operations (create, update, stop, delete) successfully', async () => {
+    const app = buildTestApp()
+    const { token } = await registerAndLogin(app)
+
+    // 1. Send a batch of create operations
+    const resSync = await app.inject({
+      method: 'POST',
+      url: '/tasks/sync',
+      headers: authHeader(token),
+      payload: {
+        operations: [
+          {
+            op: 'create',
+            tempId: 'local-uuid-1',
+            data: { title: 'Batch Task A', tag: 'productive', startedAt: '2026-06-14T08:00:00.000Z', endedAt: '2026-06-14T08:30:00.000Z' },
+          },
+          {
+            op: 'create',
+            tempId: 'local-uuid-2',
+            data: { title: 'Batch Task B', tag: 'neutral', startedAt: '2026-06-14T09:00:00.000Z' },
+          },
+        ],
+      },
+    })
+
+    expect(resSync.statusCode).toBe(200)
+    const syncResult = JSON.parse(resSync.body)
+    expect(syncResult.results).toHaveLength(2)
+    expect(syncResult.results[0].status).toBe('created')
+    expect(syncResult.results[0].tempId).toBe('local-uuid-1')
+    expect(syncResult.results[1].status).toBe('created')
+    expect(syncResult.results[1].tempId).toBe('local-uuid-2')
+
+    const serverIdA = syncResult.results[0].serverId
+    const serverIdB = syncResult.results[1].serverId
+
+    // 2. Perform stop, update, and delete in a subsequent batch
+    const resSync2 = await app.inject({
+      method: 'POST',
+      url: '/tasks/sync',
+      headers: authHeader(token),
+      payload: {
+        operations: [
+          {
+            op: 'stop',
+            id: serverIdB,
+            data: { endedAt: '2026-06-14T09:30:00.000Z' },
+          },
+          {
+            op: 'update',
+            id: serverIdB,
+            data: { title: 'Updated Batch Task B', notes: 'Done with some notes' },
+          },
+          {
+            op: 'delete',
+            id: serverIdA,
+          },
+        ],
+      },
+    })
+
+    expect(resSync2.statusCode).toBe(200)
+    const syncResult2 = JSON.parse(resSync2.body)
+    expect(syncResult2.results).toHaveLength(3)
+    expect(syncResult2.results[0].status).toBe('stopped')
+    expect(syncResult2.results[1].status).toBe('updated')
+    expect(syncResult2.results[2].status).toBe('deleted')
+
+    // 3. Verify on server that Task A is deleted and Task B has the updated name
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/tasks/',
+      headers: authHeader(token),
+    })
+    const tasks = JSON.parse(listRes.body)
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].id).toBe(serverIdB)
+    expect(tasks[0].title).toBe('Updated Batch Task B')
+    expect(tasks[0].notes).toBe('Done with some notes')
+  })
+})
