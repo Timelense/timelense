@@ -18,6 +18,7 @@ import { TagSelector } from '../components/TagSelector'
 import { CategoryPicker } from '../components/CategoryPicker'
 import { AuroraBackground } from '../components/AuroraBackground'
 import { SyncIndicator } from '../components/SyncIndicator'
+import { Loader } from '../components/Loader'
 import { colors, typography, spacing, radius } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
@@ -140,6 +141,7 @@ export default function TimerScreen() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [idleHint] = useState(() => pick(IDLE_HINTS))
   const [stopPrompt, setStopPrompt] = useState(STOP_PROMPTS[0])
+  const [stopping, setStopping] = useState(false)
 
   // Refresh current task when the tab regains focus
   useFocusEffect(useCallback(() => {
@@ -165,22 +167,34 @@ export default function TimerScreen() {
 
   // Stop ends the time span immediately, then asks for details
   const handleStop = () => {
-    if (!current) return
+    if (!current || stopping) return
+    setStopping(true)
+    // The local write is fast — hold the loader for a tick so the user
+    // perceives the transition rather than seeing the screen snap.
+    const MIN_LOADER_MS = 350
+    const startedAt = Date.now()
     const stopped = stopTask(current.id)
     setCurrent(null)
-    if (stopped) {
-      setStopPrompt(pick(STOP_PROMPTS))
-      setPendingEntry(stopped)
-      setTitle('')
-      setCategoryId(null)
-      setTag('neutral')
-      setNotes('')
+    const finish = () => {
+      if (stopped) {
+        setStopPrompt(pick(STOP_PROMPTS))
+        setPendingEntry(stopped)
+        setTitle('')
+        setCategoryId(null)
+        setTag('neutral')
+        setNotes('')
+      }
+      setStopping(false)
     }
+    const elapsed = Date.now() - startedAt
+    if (elapsed >= MIN_LOADER_MS) finish()
+    else setTimeout(finish, MIN_LOADER_MS - elapsed)
   }
 
   const handleSave = () => {
     if (!pendingEntry) return
-    if (!title.trim()) { Alert.alert('', 'What did you work on? Enter a title.'); return }
+    // Save is also disabled in the UI when title is empty, but guard anyway.
+    if (!title.trim()) return
     setSaving(true)
     try {
       editTask(pendingEntry.id, {
@@ -230,8 +244,11 @@ export default function TimerScreen() {
             {formatElapsed(pendingEntry.startedAt, pendingEntry.endedAt ?? undefined)}
           </Text>
 
+          <Text style={styles.label}>
+            Title <Text style={styles.requiredMark}>*</Text>
+          </Text>
           <TextInput
-            style={styles.titleInput}
+            style={[styles.titleInput, !title.trim() && styles.titleInputEmpty]}
             placeholder="Task title"
             placeholderTextColor={colors.textMuted}
             value={title}
@@ -256,8 +273,16 @@ export default function TimerScreen() {
             multiline
           />
 
-          <TouchableOpacity style={[styles.saveBtn, saving && styles.btnDisabled]} onPress={handleSave} disabled={saving}>
-            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+          <TouchableOpacity
+            style={[styles.saveBtn, (saving || !title.trim()) && styles.btnDisabled]}
+            onPress={handleSave}
+            disabled={saving || !title.trim()}
+          >
+            {saving ? (
+              <Loader size="small" color={colors.white} label="Saving…" labelStyle={styles.saveBtnText} />
+            ) : (
+              <Text style={styles.saveBtnText}>Save</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.discardBtn} onPress={handleDiscard} disabled={saving}>
             <Text style={styles.discardBtnText}>Discard</Text>
@@ -277,7 +302,12 @@ export default function TimerScreen() {
           <Text style={styles.elapsed}>{elapsed}</Text>
           <Text style={styles.startedAt}>since {formatTime(current.startedAt)}</Text>
           <View style={{ height: spacing.xl }} />
-          <BigButton label="Stop" color={colors.danger} onPress={handleStop} pulse />
+          <BigButton label={stopping ? 'Stopping…' : 'Stop'} color={colors.danger} onPress={handleStop} pulse={!stopping} />
+          {stopping && (
+            <View style={styles.stopOverlay} pointerEvents="auto">
+              <Loader size="large" color={colors.white} label="Stopping…" labelStyle={styles.stopOverlayLabel} />
+            </View>
+          )}
         </View>
       </FadeIn>
     )
@@ -304,6 +334,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: typography.size.xl, fontWeight: typography.weight.semibold, color: colors.text, marginBottom: spacing.xs },
   spanSummary: { fontSize: typography.size.md, color: colors.accent, marginBottom: spacing.md, fontVariant: ['tabular-nums'] },
   titleInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.lg, color: colors.text, marginBottom: spacing.sm },
+  titleInputEmpty: { borderColor: colors.danger },
+  requiredMark: { color: colors.danger, fontSize: typography.size.sm },
   label: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginBottom: spacing.xs },
   notesInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.md, color: colors.text, minHeight: 80, textAlignVertical: 'top' },
   // big round start/stop button
@@ -322,4 +354,7 @@ const styles = StyleSheet.create({
   discardBtn: { padding: spacing.md, borderRadius: radius.md, alignItems: 'center' },
   discardBtnText: { color: colors.danger, fontSize: typography.size.md, fontWeight: typography.weight.medium },
   btnDisabled: { opacity: 0.6 },
+  // stopping overlay
+  stopOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(11, 17, 32, 0.55)' },
+  stopOverlayLabel: { color: colors.white, fontSize: typography.size.md, fontWeight: typography.weight.semibold },
 })

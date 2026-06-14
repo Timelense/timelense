@@ -6,6 +6,7 @@ import Svg, { Rect, G, Circle, Text as SvgText } from 'react-native-svg'
 import { getInsights, getDistribution } from '../api/analytics'
 import { colors, typography, spacing, radius } from '../theme'
 import type { DayInsight, PeriodInsights } from '@timelense/shared'
+import { Loader } from '../components/Loader'
 
 // ---- formatting helpers ------------------------------------------------------
 
@@ -265,7 +266,7 @@ export default function InsightsScreen() {
   // Tab screens stay mounted — refetch whenever this tab regains focus
   useFocusEffect(useCallback(() => { refetchInsights() }, [refetchInsights]))
 
-  const { data: distribution } = useQuery({
+  const { data: distribution, isFetching: distributionFetching } = useQuery({
     queryKey: ['distribution', period, offset, insights?.from, insights?.to],
     queryFn: () => getDistribution({ from: insights!.from, to: insights!.to, groupBy: 'category' }),
     enabled: !!insights,
@@ -317,6 +318,12 @@ export default function InsightsScreen() {
           <Text style={styles.cachedBannerText}>
             ⚠️ Showing offline cached data from {insights.fetchedAt ? new Date(insights.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'earlier'}
           </Text>
+        </View>
+      )}
+
+      {!insights && (
+        <View style={styles.analysisLoadingCard}>
+          <Loader size="large" color={colors.accent} label="Crunching your numbers…" />
         </View>
       )}
 
@@ -421,9 +428,14 @@ export default function InsightsScreen() {
           </View>
 
           {/* Time by category */}
-          {buckets.length > 0 && (
+          {(buckets.length > 0 || distributionFetching) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Time by category</Text>
+              {distributionFetching && buckets.length === 0 && (
+                <View style={styles.inlineLoader}>
+                  <Loader size="small" color={colors.accent} label="Loading categories…" />
+                </View>
+              )}
               {buckets.map((bucket) => {
                 const share = insights.totalMinutes > 0
                   ? Math.round((bucket.totalMinutes / insights.totalMinutes) * 100)
@@ -460,6 +472,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     alignItems: 'center',
   },
+  analysisLoadingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+  },
+  inlineLoader: { paddingVertical: spacing.md, alignItems: 'center' },
   cachedBannerText: {
     color: colors.warning,
     fontSize: typography.size.sm,
