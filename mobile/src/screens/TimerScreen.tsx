@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { CategoryPicker } from '../components/CategoryPicker'
 import { AuroraBackground } from '../components/AuroraBackground'
 import { SyncIndicator } from '../components/SyncIndicator'
 import { Loader } from '../components/Loader'
-import { colors, typography, spacing, radius } from '../theme'
+import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
   const end = endedAt ? new Date(endedAt).getTime() : Date.now()
@@ -78,7 +78,7 @@ function PulseRing({ color, active }: { color: string; active: boolean }) {
     <Animated.View
       pointerEvents="none"
       style={[
-        styles.pulseRing,
+        btnStyles.pulseRing,
         {
           borderColor: color,
           opacity: anim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.55, 0.12, 0] }),
@@ -115,18 +115,28 @@ function BigButton({ label, color, onPress, pulse }: { label: string; color: str
   const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }).start()
 
   return (
-    <View style={styles.bigBtnWrap}>
+    <View style={btnStyles.bigBtnWrap}>
       <PulseRing color={color} active={pulse} />
       <Pressable onPressIn={pressIn} onPressOut={pressOut} onPress={onPress}>
-        <Animated.View style={[styles.bigBtn, { backgroundColor: color, transform: [{ scale }] }]}>
-          <Text style={styles.bigBtnText}>{label}</Text>
+        <Animated.View style={[btnStyles.bigBtn, shadow.button(color), { backgroundColor: color, transform: [{ scale }] }]}>
+          <Text style={btnStyles.bigBtnText}>{label}</Text>
         </Animated.View>
       </Pressable>
     </View>
   )
 }
 
+const BTN_RADIUS = BTN_SIZE / 2
+const btnStyles = StyleSheet.create({
+  bigBtnWrap: { width: BTN_SIZE, height: BTN_SIZE, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_RADIUS, borderWidth: 4 },
+  bigBtn: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_RADIUS, alignItems: 'center', justifyContent: 'center' },
+  bigBtnText: { color: '#FFFFFF', fontFamily: fonts.bold, fontSize: typography.size.xxl, fontWeight: typography.weight.bold, letterSpacing: 0.5 },
+})
+
 export default function TimerScreen() {
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
   // Current running task — read from local DB (synchronous)
   const [current, setCurrent] = useState<TaskEntry | null>(() => getCurrentTask())
   const [isLoading, setIsLoading] = useState(false)
@@ -327,34 +337,29 @@ export default function TimerScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centered: { alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   content: { padding: spacing.lg, gap: spacing.sm },
-  sectionTitle: { fontSize: typography.size.xl, fontWeight: typography.weight.semibold, color: colors.text, marginBottom: spacing.xs },
-  spanSummary: { fontSize: typography.size.md, color: colors.accent, marginBottom: spacing.md, fontVariant: ['tabular-nums'] },
-  titleInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.lg, color: colors.text, marginBottom: spacing.sm },
+  sectionTitle: { fontSize: typography.size.xxl, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text, marginBottom: spacing.xs },
+  spanSummary: { fontSize: typography.size.md, color: colors.accent, marginBottom: spacing.md, fontVariant: ['tabular-nums'], fontFamily: fonts.semibold, fontWeight: typography.weight.semibold },
+  titleInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, fontSize: typography.size.lg, color: colors.text, marginBottom: spacing.sm, fontWeight: typography.weight.semibold },
   titleInputEmpty: { borderColor: colors.danger },
   requiredMark: { color: colors.danger, fontSize: typography.size.sm },
-  label: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginBottom: spacing.xs },
-  notesInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.md, color: colors.text, minHeight: 80, textAlignVertical: 'top' },
-  // big round start/stop button
-  bigBtnWrap: { width: BTN_SIZE, height: BTN_SIZE, alignItems: 'center', justifyContent: 'center' },
-  pulseRing: { position: 'absolute', width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2, borderWidth: 3 },
-  bigBtn: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
-  bigBtnText: { color: colors.white, fontSize: typography.size.xxl, fontWeight: typography.weight.bold, letterSpacing: 1 },
-  hint: { marginTop: spacing.xl, color: colors.textMuted, fontSize: typography.size.sm, textAlign: 'center', lineHeight: 20 },
+  label: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.bold, color: colors.textSecondary, marginBottom: spacing.xs },
+  notesInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, fontSize: typography.size.md, color: colors.text, minHeight: 80, textAlignVertical: 'top', fontWeight: typography.weight.medium },
+  hint: { marginTop: spacing.xl, color: colors.textMuted, fontSize: typography.size.sm, textAlign: 'center', lineHeight: 22, fontWeight: typography.weight.medium },
   // running state
-  runningLabel: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.productive, letterSpacing: 3, textAlign: 'center' },
-  elapsed: { fontSize: typography.size.xxxl + 16, fontWeight: typography.weight.bold, color: colors.text, textAlign: 'center', fontVariant: ['tabular-nums'] },
-  startedAt: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center' },
+  runningLabel: { fontSize: typography.size.xs, fontFamily: fonts.bold, fontWeight: typography.weight.heavy, color: colors.productive, letterSpacing: 3, textAlign: 'center' },
+  elapsed: { fontSize: typography.size.xxxl + 16, fontFamily: fonts.bold, fontWeight: typography.weight.heavy, color: colors.text, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  startedAt: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center', fontWeight: typography.weight.medium },
   // details form actions
-  saveBtn: { backgroundColor: colors.primary, padding: spacing.md, borderRadius: radius.md, alignItems: 'center', marginTop: spacing.lg },
-  saveBtnText: { color: colors.white, fontSize: typography.size.lg, fontWeight: typography.weight.bold },
-  discardBtn: { padding: spacing.md, borderRadius: radius.md, alignItems: 'center' },
-  discardBtnText: { color: colors.danger, fontSize: typography.size.md, fontWeight: typography.weight.medium },
+  saveBtn: { backgroundColor: colors.primary, paddingVertical: spacing.md, borderRadius: radius.full, alignItems: 'center', marginTop: spacing.lg, ...shadow.button(colors.primary) },
+  saveBtnText: { color: colors.white, fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold },
+  discardBtn: { padding: spacing.md, borderRadius: radius.full, alignItems: 'center' },
+  discardBtnText: { color: colors.danger, fontSize: typography.size.md, fontWeight: typography.weight.semibold },
   btnDisabled: { opacity: 0.6 },
   // stopping overlay
-  stopOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(11, 17, 32, 0.55)' },
+  stopOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(28, 24, 48, 0.55)' },
   stopOverlayLabel: { color: colors.white, fontSize: typography.size.md, fontWeight: typography.weight.semibold },
 })

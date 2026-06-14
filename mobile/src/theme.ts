@@ -1,32 +1,74 @@
-// Dark theme — slate surfaces with indigo/violet accents.
-export const colors = {
-  primary: '#6366F1', // indigo-500
-  primaryDark: '#4F46E5', // indigo-600
-  primaryLight: '#312E81', // deep indigo — subtle accent surfaces on dark
-  accent: '#A78BFA', // violet-400
+// TimeLens — "Soft Play" design language.
+// Soft & friendly, chunky & characterful. Full light + dark token sets,
+// plus a ThemeProvider/useTheme hook for runtime switching.
+import React, { createContext, useContext, useMemo, useState } from 'react'
+import { useColorScheme } from 'react-native'
 
-  productive: '#34D399', // emerald-400
-  nonProductive: '#F87171', // red-400
-  neutral: '#64748B', // slate-500
+// ── Palettes ────────────────────────────────────────────────────────────────
+// Warm cream surfaces + friendly violet, soft pastel categories.
+export const lightColors = {
+  primary: '#7C6BF5', // friendly violet
+  primaryDark: '#6354E0',
+  primaryLight: '#ECE9FE', // soft violet wash — accent surfaces
+  accent: '#6C5CE7', // punchier violet — links, score, highlights
 
-  background: '#0B1120', // near-black slate
-  surface: '#151E31', // slate card
-  surfaceRaised: '#1E293B', // slate-800 — inputs, chips
-  border: '#28344A',
-  divider: '#1E2A41',
+  productive: '#2FC79B', // mint
+  nonProductive: '#FF8A6B', // coral
+  neutral: '#C7C2D2', // warm grey-lilac
 
-  text: '#F1F5F9', // slate-100
-  textSecondary: '#94A3B8', // slate-400
-  textMuted: '#5B6B84',
+  background: '#FFF8F1', // warm cream
+  surface: '#FFFFFF', // clean white cards
+  surfaceRaised: '#FBF4FF', // soft lilac tint — inputs, chips
+  border: '#F0E8DD',
+  divider: '#F2ECE3',
 
-  danger: '#EF4444',
-  warning: '#F59E0B',
-  success: '#10B981',
+  text: '#2B2540', // deep plum-ink (softer than pure black)
+  textSecondary: '#6F6880',
+  textMuted: '#A39BB1',
+
+  danger: '#FF6B6B',
+  warning: '#FFB020',
+  success: '#2FC79B',
 
   white: '#FFFFFF',
   black: '#000000',
 } as const
 
+export type Palette = { readonly [K in keyof typeof lightColors]: string }
+
+export const darkColors: Palette = {
+  primary: '#9C8BFF', // brighter violet on dark
+  primaryDark: '#7C6BF5',
+  primaryLight: '#372D5B',
+  accent: '#A99BFF',
+
+  productive: '#4FD9B0',
+  nonProductive: '#FF9E85',
+  neutral: '#6E6886',
+
+  background: '#1C1830', // deep plum ink
+  surface: '#28213C',
+  surfaceRaised: '#312847',
+  border: '#3B3357',
+  divider: '#332B4D',
+
+  text: '#F4F0FB',
+  textSecondary: '#B5ADC9',
+  textMuted: '#7E7596',
+
+  danger: '#FF7A7A',
+  warning: '#FFC04D',
+  success: '#4FD9B0',
+
+  white: '#FFFFFF',
+  black: '#000000',
+}
+
+// Back-compat default export (light). Files not yet reading the hook still
+// pick up the new look in light mode.
+export const colors = lightColors
+
+// ── Spacing ───────────────────────────────────────────────────────────────
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -36,39 +78,125 @@ export const spacing = {
   xxl: 48,
 } as const
 
+// ── Typography ──────────────────────────────────────────────────────────────
+// Chunky & characterful: heavier default weights, room for oversized numbers.
 export const typography = {
   size: {
-    xs: 11,
+    xs: 12,
     sm: 13,
     md: 15,
-    lg: 17,
-    xl: 20,
-    xxl: 28,
-    xxxl: 36,
+    lg: 18,
+    xl: 22,
+    xxl: 30,
+    xxxl: 40,
   },
   weight: {
-    regular: '400' as const,
-    medium: '500' as const,
-    semibold: '600' as const,
-    bold: '700' as const,
+    regular: '500' as const, // base sits a touch heavier than usual
+    medium: '600' as const,
+    semibold: '700' as const,
+    bold: '800' as const,
+    heavy: '900' as const,
   },
 } as const
 
+// ── Fonts ───────────────────────────────────────────────────────────────────
+// Fredoka — rounded, chunky, characterful. Files live in mobile/assets/fonts and
+// are linked via react-native.config.js (run `npx react-native-asset`, then rebuild).
+// The PostScript names below match the filenames, so they resolve on iOS + Android.
+export const fonts = {
+  regular: 'Fredoka-Regular',
+  medium: 'Fredoka-Medium',
+  semibold: 'Fredoka-SemiBold',
+  bold: 'Fredoka-Bold',
+} as const
+
+// ── Radius ──────────────────────────────────────────────────────────────────
+// Big, soft, pillowy corners.
 export const radius = {
-  sm: 6,
-  md: 10,
-  lg: 16,
+  sm: 10,
+  md: 16,
+  lg: 24,
+  xl: 32,
   full: 9999,
 } as const
 
-// Brighter hues that hold up on dark backgrounds
+// ── Shadows ───────────────────────────────────────────────────────────────
+// Soft floating cards + a toy-like "drop" under primary buttons.
+export const shadow = {
+  card: {
+    shadowColor: '#2B2540',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  button: (tint: string) => ({
+    shadowColor: tint,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    elevation: 6,
+  }),
+} as const
+
+// Brighter pastel hues for category dots/bars (hold up in both modes)
 export const categoryPalette = [
-  '#818CF8', // indigo
-  '#34D399', // emerald
-  '#F87171', // red
-  '#FBBF24', // amber
-  '#A78BFA', // violet
-  '#38BDF8', // sky
-  '#FB923C', // orange
-  '#F472B6', // pink
+  '#7C6BF5', // violet
+  '#2FC79B', // mint
+  '#FF8A6B', // coral
+  '#FFC93C', // lemon
+  '#6FB7FF', // sky
+  '#FF9EC4', // blush
+  '#5BD1B0', // teal
+  '#B9A8FF', // lilac
 ] as const
+
+// ── Theme context ─────────────────────────────────────────────────────────
+type Scheme = 'light' | 'dark'
+export type ThemePreference = 'system' | 'light' | 'dark'
+
+interface ThemeContextValue {
+  colors: Palette
+  scheme: Scheme
+  preference: ThemePreference
+  setPreference: (p: ThemePreference) => void
+  toggle: () => void
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const system = useColorScheme()
+  const [preference, setPreference] = useState<ThemePreference>('system')
+
+  const scheme: Scheme =
+    preference === 'system' ? (system === 'dark' ? 'dark' : 'light') : preference
+
+  const value = useMemo<ThemeContextValue>(() => {
+    const resolved: Scheme = scheme
+    return {
+      colors: resolved === 'dark' ? darkColors : lightColors,
+      scheme: resolved,
+      preference,
+      setPreference,
+      toggle: () => setPreference(resolved === 'dark' ? 'light' : 'dark'),
+    }
+  }, [scheme, preference])
+
+  return React.createElement(ThemeContext.Provider, { value }, children)
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext)
+  if (!ctx) {
+    // Safe fallback before the provider mounts.
+    return {
+      colors: lightColors,
+      scheme: 'light',
+      preference: 'system',
+      setPreference: () => {},
+      toggle: () => {},
+    }
+  }
+  return ctx
+}

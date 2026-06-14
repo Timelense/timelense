@@ -1,5 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import { colors, typography } from '../theme'
+import { useTheme, typography } from '../theme'
 import type { TabParamList } from './types'
 import { TimerIcon, TimelineIcon, InsightsIcon, SettingsIcon } from '../components/icons'
 import { BrandHeader } from '../components/BrandHeader'
@@ -11,22 +11,23 @@ import SettingsScreen from '../screens/SettingsScreen'
 const Tab = createBottomTabNavigator<TabParamList>()
 
 export default function TabNavigator() {
+  const { colors } = useTheme()
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         header: () => <BrandHeader screen={route.name} />,
-        tabBarActiveTintColor: colors.accent,
+        tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          height: 62,
+          borderTopColor: colors.divider,
+          height: 64,
           paddingTop: 6,
           paddingBottom: 8,
         },
         tabBarLabelStyle: {
           fontSize: typography.size.xs,
-          fontWeight: typography.weight.medium,
+          fontWeight: typography.weight.semibold,
         },
         headerStyle: { backgroundColor: colors.background },
         headerTitleStyle: { color: colors.text, fontWeight: typography.weight.semibold },

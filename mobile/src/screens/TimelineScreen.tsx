@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
   View,
@@ -18,12 +18,14 @@ import { getCategories } from '../api/categories'
 import { TagSelector } from '../components/TagSelector'
 import { SyncIndicator } from '../components/SyncIndicator'
 import { Loader } from '../components/Loader'
-import { colors, typography, spacing, radius } from '../theme'
+import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
 
-const TAG_COLOR: Record<string, string> = {
-  productive: colors.productive,
-  'non-productive': colors.nonProductive,
-  neutral: colors.neutral,
+function tagColors(colors: Palette): Record<string, string> {
+  return {
+    productive: colors.productive,
+    'non-productive': colors.nonProductive,
+    neutral: colors.neutral,
+  }
 }
 
 function todayStr() {
@@ -103,11 +105,11 @@ function RowFadeIn({ index, children }: { index: number; children: React.ReactNo
 }
 
 // Proportion bar: productive / non-productive / neutral share of the day
-function DayBar({ productive, nonProductive, neutral }: { productive: number; nonProductive: number; neutral: number }) {
+function DayBar({ productive, nonProductive, neutral, colors }: { productive: number; nonProductive: number; neutral: number; colors: Palette }) {
   const total = productive + nonProductive + neutral
   if (total === 0) return null
   return (
-    <View style={styles.dayBar}>
+    <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.divider }}>
       {productive > 0 && <View style={{ flex: productive, backgroundColor: colors.productive }} />}
       {nonProductive > 0 && <View style={{ flex: nonProductive, backgroundColor: colors.nonProductive }} />}
       {neutral > 0 && <View style={{ flex: neutral, backgroundColor: colors.neutral }} />}
@@ -116,6 +118,9 @@ function DayBar({ productive, nonProductive, neutral }: { productive: number; no
 }
 
 export default function TimelineScreen() {
+  const { colors } = useTheme()
+  const styles = useMemo(() => makeStyles(colors), [colors])
+  const TAG_COLOR = useMemo(() => tagColors(colors), [colors])
   const [date, setDate] = useState(todayStr())
   const [data, setData] = useState<DailyTimeline | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -288,6 +293,7 @@ export default function TimelineScreen() {
             productive={data.productiveMinutes}
             nonProductive={data.nonProductiveMinutes}
             neutral={data.neutralMinutes}
+            colors={colors}
           />
         </View>
       )}
@@ -361,21 +367,21 @@ export default function TimelineScreen() {
 
 const RAIL_W = 64
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   // date nav
   dateNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  navBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  navBtn: { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.4 },
-  navArrow: { fontSize: typography.size.xl, color: colors.accent, lineHeight: 24 },
-  dateText: { fontSize: typography.size.lg, fontWeight: typography.weight.semibold, color: colors.text },
+  navArrow: { fontSize: typography.size.xl, color: colors.primary, lineHeight: 24 },
+  dateText: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
   // summary
-  summary: { marginHorizontal: spacing.md, marginBottom: spacing.xs, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  summary: { marginHorizontal: spacing.md, marginBottom: spacing.xs, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm, ...shadow.card },
   summaryStats: { flexDirection: 'row' },
   summaryItem: { flex: 1, alignItems: 'center' },
-  summaryValue: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.text, fontVariant: ['tabular-nums'] },
-  summaryLabel: { fontSize: typography.size.xs, color: colors.textMuted, marginTop: 2 },
-  dayBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.divider },
+  summaryValue: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text, fontVariant: ['tabular-nums'] },
+  summaryLabel: { fontSize: typography.size.xs, color: colors.textMuted, marginTop: 2, fontFamily: fonts.medium, fontWeight: typography.weight.medium },
+  dayBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.divider },
   // gap indicator
   gapRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginLeft: RAIL_W, marginVertical: 2, paddingRight: spacing.sm },
   gapLine: { flex: 1, height: 1, backgroundColor: colors.divider },
@@ -383,17 +389,18 @@ const styles = StyleSheet.create({
   // timeline rows
   row: { flexDirection: 'row', marginTop: spacing.sm },
   rail: { width: RAIL_W, alignItems: 'center' },
-  railTime: { fontSize: typography.size.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] },
-  railDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  railDotRunning: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: colors.background },
-  railLine: { flex: 1, width: 2, backgroundColor: colors.divider, marginTop: 4, borderRadius: 1 },
-  card: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: 6 },
-  cardRunning: { borderColor: colors.productive },
+  railTime: { fontSize: typography.size.xs, color: colors.textMuted, fontVariant: ['tabular-nums'], fontFamily: fonts.semibold, fontWeight: typography.weight.semibold },
+  // chunky dot with a soft halo so the rail reads as a real spine
+  railDot: { width: 18, height: 18, borderRadius: 9, marginTop: 6, borderWidth: 4, borderColor: colors.surface },
+  railDotRunning: { width: 20, height: 20, borderRadius: 10, borderWidth: 4, borderColor: colors.background },
+  railLine: { flex: 1, width: 5, backgroundColor: colors.border, marginTop: 4, borderRadius: 3 },
+  card: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: 6, ...shadow.card },
+  cardRunning: { borderColor: colors.productive, borderWidth: 2 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  cardTitle: { flex: 1, fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
-  cardTitleRunning: { fontStyle: 'italic', color: colors.accent },
-  durationChip: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full },
-  durationText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, fontVariant: ['tabular-nums'] },
+  cardTitle: { flex: 1, fontSize: typography.size.md, fontFamily: fonts.semibold, fontWeight: typography.weight.bold, color: colors.text },
+  cardTitleRunning: { color: colors.accent },
+  durationChip: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.full },
+  durationText: { fontSize: typography.size.xs, fontFamily: fonts.bold, fontWeight: typography.weight.bold, fontVariant: ['tabular-nums'] },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   cardMeta: { fontSize: typography.size.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] },
   catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 140 },

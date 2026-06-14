@@ -1,11 +1,11 @@
 import { StatusBar } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { NavigationContainer, DarkTheme } from '@react-navigation/native'
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './src/contexts/auth'
 import { SyncProvider } from './src/sync/syncStatus'
 import RootNavigator from './src/navigation/RootNavigator'
-import { colors } from './src/theme'
+import { ThemeProvider, useTheme } from './src/theme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,30 +13,46 @@ const queryClient = new QueryClient({
   },
 })
 
-const navTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: colors.primary,
-    background: colors.background,
-    card: colors.surface,
-    text: colors.text,
-    border: colors.border,
-  },
+function ThemedApp() {
+  const { colors, scheme } = useTheme()
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme
+
+  const navTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+    },
+  }
+
+  return (
+    <>
+      <StatusBar
+        barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.background}
+      />
+      <NavigationContainer theme={navTheme}>
+        <RootNavigator />
+      </NavigationContainer>
+    </>
+  )
 }
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <SyncProvider>
-            <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-            <NavigationContainer theme={navTheme}>
-              <RootNavigator />
-            </NavigationContainer>
-          </SyncProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <SyncProvider>
+              <ThemedApp />
+            </SyncProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   )
