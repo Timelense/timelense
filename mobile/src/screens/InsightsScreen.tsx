@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
-import Svg, { Rect, G, Circle, Text as SvgText } from 'react-native-svg'
+import Svg, { Circle, Text as SvgText } from 'react-native-svg'
 import { getInsights, getDistribution } from '../api/analytics'
-import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
-import type { DayInsight, PeriodInsights } from '@timelense/shared'
+import { useTheme, typography, spacing, radius, shadow, fonts, rainbowFor, type Palette } from '../theme'
+import type { DayInsight } from '@timelense/shared'
 import { Loader } from '../components/Loader'
+import { RainbowRing, GradientBubble, GrowColumn, Sparkle } from '../components/playful'
 
 // ---- formatting helpers ------------------------------------------------------
 
@@ -29,123 +30,99 @@ function dayLetter(dateIso: string): string {
   return new Date(dateIso + 'T12:00:00').toLocaleDateString([], { weekday: 'narrow' })
 }
 
-// ---- score ring --------------------------------------------------------------
+// ---- bubble tints (playful gradient washes, scheme-aware) --------------------
 
-const RING_SIZE = 96
-const RING_STROKE = 9
-const RING_R = (RING_SIZE - RING_STROKE) / 2
-const RING_C = 2 * Math.PI * RING_R
+type TintKey = 'violet' | 'mint' | 'sky' | 'lemon'
+function bubbleTints(colors: Palette, scheme: 'light' | 'dark'): Record<TintKey, [string, string]> {
+  return scheme === 'dark'
+    ? {
+        violet: ['#372D5B', colors.surface],
+        mint: ['#1F4A3F', colors.surface],
+        sky: ['#243A4D', colors.surface],
+        lemon: ['#4D4322', colors.surface],
+      }
+    : {
+        violet: ['#ECE9FE', '#FFFFFF'],
+        mint: ['#DFF7EF', '#FFFFFF'],
+        sky: ['#E4F1FF', '#FFFFFF'],
+        lemon: ['#FFF3D6', '#FFFFFF'],
+      }
+}
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle)
+// ---- gradient stat bubble -----------------------------------------------------
 
-function ScoreRing({ score }: { score: number | null }) {
+function StatBubble({
+  label,
+  value,
+  valueColor,
+  delta,
+  deltaSuffix,
+  tint,
+}: {
+  label: string
+  value: string
+  valueColor?: string
+  delta?: number | null
+  deltaSuffix?: string
+  tint: [string, string]
+}) {
   const { colors } = useTheme()
-  const anim = useRef(new Animated.Value(0)).current
-
-  useEffect(() => {
-    anim.setValue(0)
-    Animated.timing(anim, {
-      toValue: score ?? 0,
-      duration: 900,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false, // SVG props can't use the native driver
-    }).start()
-  }, [score])
-
-  const dashOffset = anim.interpolate({
-    inputRange: [0, 100],
-    outputRange: [RING_C, 0],
-  })
-
+  const styles = useMemo(() => makeStyles(colors), [colors])
   return (
-    <View style={{ width: RING_SIZE, height: RING_SIZE }}>
-      <Svg width={RING_SIZE} height={RING_SIZE}>
-        <Circle
-          cx={RING_SIZE / 2}
-          cy={RING_SIZE / 2}
-          r={RING_R}
-          stroke={colors.divider}
-          strokeWidth={RING_STROKE}
-          fill="none"
-        />
-        <AnimatedCircle
-          cx={RING_SIZE / 2}
-          cy={RING_SIZE / 2}
-          r={RING_R}
-          stroke={score == null ? colors.textMuted : colors.accent}
-          strokeWidth={RING_STROKE}
-          strokeLinecap="round"
-          fill="none"
-          strokeDasharray={`${RING_C} ${RING_C}`}
-          strokeDashoffset={dashOffset}
-          transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-        />
-        <SvgText
-          x={RING_SIZE / 2}
-          y={RING_SIZE / 2 + 8}
-          textAnchor="middle"
-          fontSize={26}
-          fontFamily={fonts.bold}
-          fontWeight="bold"
-          fill={colors.text}
-        >
-          {score != null ? `${score}` : '—'}
-        </SvgText>
-      </Svg>
-    </View>
+    <GradientBubble from={tint[0]} to={tint[1]} style={styles.statCard}>
+      <Text style={[styles.statValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+      {delta != null && (
+        <Text style={[styles.statDelta, { color: delta >= 0 ? colors.productive : colors.nonProductive }]}>
+          {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}{deltaSuffix ?? ''} vs last
+        </Text>
+      )}
+    </GradientBubble>
   )
 }
 
-// ---- bar chart ---------------------------------------------------------------
+// ---- week bars (View-based, grow up from the baseline) -----------------------
 
-const CHART_HEIGHT = 140
-const LABEL_H = 18
-const BAR_GAP = 5
+const CHART_HEIGHT = 130
 
-function BarChart({ days, width }: { days: DayInsight[]; width: number }) {
-  const { colors } = useTheme()
+function WeekBars({ days, colors }: { days: DayInsight[]; colors: Palette }) {
+  const styles = useMemo(() => makeStyles(colors), [colors])
   const max = Math.max(...days.map((d) => d.totalMinutes), 1)
-  const barW = (width - BAR_GAP * (days.length - 1)) / days.length
-  const showLabels = days.length <= 7 ? 1 : Math.ceil(days.length / 8)
+  const many = days.length > 7
+  const gap = many ? 3 : 8
+  const labelStep = many ? Math.ceil(days.length / 8) : 1
 
   return (
-    <Svg width={width} height={CHART_HEIGHT + LABEL_H}>
-      {days.map((day, i) => {
-        const x = i * (barW + BAR_GAP)
-        const prodH = (day.productiveMinutes / max) * CHART_HEIGHT
-        const nonH = (day.nonProductiveMinutes / max) * CHART_HEIGHT
-        const neutralH = (day.neutralMinutes / max) * CHART_HEIGHT
-        const empty = day.totalMinutes === 0
-        let y = CHART_HEIGHT
-        return (
-          <G key={day.date}>
-            {empty && (
-              <Rect x={x} y={CHART_HEIGHT - 3} width={barW} height={3} fill={colors.divider} rx={1.5} />
-            )}
-            {neutralH > 0 && (
-              <Rect x={x} y={(y -= neutralH)} width={barW} height={neutralH} fill={colors.neutral} rx={2.5} />
-            )}
-            {nonH > 0 && (
-              <Rect x={x} y={(y -= nonH)} width={barW} height={nonH} fill={colors.nonProductive} rx={2.5} />
-            )}
-            {prodH > 0 && (
-              <Rect x={x} y={(y -= prodH)} width={barW} height={prodH} fill={colors.productive} rx={2.5} />
-            )}
-            {i % showLabels === 0 && (
-              <SvgText
-                x={x + barW / 2}
-                y={CHART_HEIGHT + LABEL_H - 4}
-                textAnchor="middle"
-                fontSize={10}
-                fill={colors.textMuted}
+    <View>
+      <View style={[styles.barRow, { height: CHART_HEIGHT, gap }]}>
+        {days.map((day, i) => {
+          const prodH = (day.productiveMinutes / max) * CHART_HEIGHT
+          const nonH = (day.nonProductiveMinutes / max) * CHART_HEIGHT
+          const neuH = (day.neutralMinutes / max) * CHART_HEIGHT
+          const total = prodH + nonH + neuH
+          return (
+            <View key={day.date} style={styles.barColWrap}>
+              <GrowColumn
+                height={total > 0 ? total : 3}
+                delay={i * 70}
+                style={[styles.barColumn, total === 0 && { backgroundColor: colors.divider }]}
               >
-                {days.length <= 7 ? dayLetter(day.date) : day.date.slice(8, 10)}
-              </SvgText>
-            )}
-          </G>
-        )
-      })}
-    </Svg>
+                {prodH > 0 && <View style={{ height: prodH, backgroundColor: colors.productive }} />}
+                {nonH > 0 && <View style={{ height: nonH, backgroundColor: colors.nonProductive }} />}
+                {neuH > 0 && <View style={{ height: neuH, backgroundColor: colors.neutral }} />}
+              </GrowColumn>
+            </View>
+          )
+        })}
+      </View>
+      <View style={[styles.barLabelRow, { gap }]}>
+        {days.map((day, i) => (
+          <Text key={day.date} style={styles.barLabel}>
+            {i % labelStep === 0 ? (many ? day.date.slice(8, 10) : dayLetter(day.date)) : ''}
+          </Text>
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -200,13 +177,7 @@ function TagDonut({ productive, nonProductive, neutral }: { productive: number; 
       >
         {fmtMinutes(total)}
       </SvgText>
-      <SvgText
-        x={DONUT_SIZE / 2}
-        y={DONUT_SIZE / 2 + 16}
-        textAnchor="middle"
-        fontSize={9}
-        fill={colors.textMuted}
-      >
+      <SvgText x={DONUT_SIZE / 2} y={DONUT_SIZE / 2 + 16} textAnchor="middle" fontSize={9} fill={colors.textMuted}>
         tracked
       </SvgText>
     </Svg>
@@ -227,11 +198,11 @@ function ShareBar({ share, color }: { share: number; color: string }) {
     }).start()
   }, [share])
   return (
-    <View style={{ height: 8, backgroundColor: colors.divider, borderRadius: 4, overflow: 'hidden' }}>
+    <View style={{ height: 9, backgroundColor: colors.divider, borderRadius: radius.full, overflow: 'hidden' }}>
       <Animated.View
         style={{
-          height: 8,
-          borderRadius: 4,
+          height: 9,
+          borderRadius: radius.full,
           backgroundColor: color,
           width: anim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }),
         }}
@@ -240,32 +211,15 @@ function ShareBar({ share, color }: { share: number; color: string }) {
   )
 }
 
-// ---- stat card ----------------------------------------------------------------
-
-function StatCard({ label, value, delta, deltaSuffix }: { label: string; value: string; delta?: number | null; deltaSuffix?: string }) {
-  const { colors } = useTheme()
-  const styles = useMemo(() => makeStyles(colors), [colors])
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-      {delta != null && (
-        <Text style={[styles.statDelta, { color: delta >= 0 ? colors.productive : colors.nonProductive }]}>
-          {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}{deltaSuffix ?? ''} vs last
-        </Text>
-      )}
-    </View>
-  )
-}
-
 // ---- screen -------------------------------------------------------------------
 
 export default function InsightsScreen() {
-  const { colors } = useTheme()
+  const { colors, scheme } = useTheme()
   const styles = useMemo(() => makeStyles(colors), [colors])
+  const tints = useMemo(() => bubbleTints(colors, scheme), [colors, scheme])
+  const ringColors = rainbowFor(scheme)
   const [period, setPeriod] = useState<'week' | 'month'>('week')
   const [offset, setOffset] = useState(0)
-  const [chartWidth, setChartWidth] = useState(0)
 
   const { data: insights, refetch: refetchInsights } = useQuery({
     queryKey: ['insights', period, offset],
@@ -347,9 +301,20 @@ export default function InsightsScreen() {
 
       {insights && !isEmpty && (
         <>
-          {/* Score + stats */}
+          {/* Score hero — spinning rainbow ring + twinkles */}
           <View style={styles.scoreCard}>
-            <ScoreRing score={insights.score} />
+            <Sparkle color="#FFC93C" size={14} delay={0} style={{ top: 16, right: 24 }} />
+            <Sparkle color="#FF9EC4" size={10} delay={600} style={{ top: 46, right: 50 }} />
+            <Sparkle color="#6FB7FF" size={12} delay={1100} style={{ bottom: 22, right: 30 }} />
+            <RainbowRing
+              size={124}
+              stroke={11}
+              ringColors={ringColors}
+              holeColor={colors.surface}
+              centerValue={insights.score != null ? `${insights.score}` : '—'}
+              centerLabel="score"
+              spin={insights.score != null}
+            />
             <View style={styles.scoreSide}>
               <Text style={styles.scoreTitle}>Productivity score</Text>
               {insights.deltaScore != null ? (
@@ -359,18 +324,25 @@ export default function InsightsScreen() {
               ) : (
                 <Text style={styles.scoreDeltaMuted}>No previous {period} to compare</Text>
               )}
-              <Text style={styles.scoreHint}>share of tracked time spent productively</Text>
+              <Text style={styles.scoreHint}>share of tracked time spent in flow</Text>
             </View>
           </View>
 
+          {/* Stat bubbles */}
           <View style={styles.statRow}>
-            <StatCard
+            <StatBubble
               label="Total tracked"
               value={fmtMinutes(insights.totalMinutes)}
               delta={insights.deltaTotalMinutes != null ? Math.round(insights.deltaTotalMinutes) : null}
               deltaSuffix="m"
+              tint={tints.violet}
             />
-            <StatCard label="Productive" value={fmtMinutes(insights.productiveMinutes)} />
+            <StatBubble
+              label="Productive"
+              value={fmtMinutes(insights.productiveMinutes)}
+              valueColor={colors.productive}
+              tint={tints.mint}
+            />
           </View>
 
           {(() => {
@@ -385,11 +357,29 @@ export default function InsightsScreen() {
               : '—'
             return (
               <View style={styles.statRow}>
-                <StatCard label="Avg per active day" value={fmtMinutes(avgPerDay)} />
-                <StatCard label={`Best day · ${bestLabel}`} value={best ? fmtMinutes(best.totalMinutes) : '—'} />
+                <StatBubble label="Avg per active day" value={fmtMinutes(avgPerDay)} tint={tints.sky} />
+                <StatBubble label={`Best day · ${bestLabel}`} value={best ? fmtMinutes(best.totalMinutes) : '—'} tint={tints.lemon} />
               </View>
             )
           })()}
+
+          {/* Bar chart */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{period === 'week' ? 'This week' : 'This month'}</Text>
+            <WeekBars days={insights.days} colors={colors} />
+            <View style={styles.legend}>
+              {[
+                { color: colors.productive, label: 'Productive' },
+                { color: colors.nonProductive, label: 'Non-productive' },
+                { color: colors.neutral, label: 'Neutral' },
+              ].map((item) => (
+                <View key={item.label} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.legendText}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
 
           {/* Tag split donut */}
           <View style={[styles.section, styles.donutSection]}>
@@ -413,33 +403,10 @@ export default function InsightsScreen() {
             </View>
           </View>
 
-          {/* Daily activity chart */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Daily activity</Text>
-            <View
-              style={styles.chartContainer}
-              onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
-            >
-              {chartWidth > 0 && <BarChart days={insights.days} width={chartWidth} />}
-              <View style={styles.legend}>
-                {[
-                  { color: colors.productive, label: 'Productive' },
-                  { color: colors.nonProductive, label: 'Non-productive' },
-                  { color: colors.neutral, label: 'Neutral' },
-                ].map((item) => (
-                  <View key={item.label} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                    <Text style={styles.legendText}>{item.label}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Time by category */}
+          {/* Where it went — time by category */}
           {(buckets.length > 0 || distributionFetching) && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Time by category</Text>
+              <Text style={styles.sectionTitle}>Where it went</Text>
               {distributionFetching && buckets.length === 0 && (
                 <View style={styles.inlineLoader}>
                   <Loader size="small" color={colors.accent} label="Loading categories…" />
@@ -455,7 +422,6 @@ export default function InsightsScreen() {
                     <View style={styles.distMeta}>
                       <View style={[styles.catDot, { backgroundColor: color }]} />
                       <Text style={styles.catName} numberOfLines={1}>{bucket.name ?? 'Uncategorized'}</Text>
-                      <Text style={styles.catMins}>{fmtMinutes(bucket.totalMinutes)}</Text>
                       <Text style={styles.catShare}>{share}%</Text>
                     </View>
                     <ShareBar share={share} color={color} />
@@ -492,11 +458,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     minHeight: 200,
   },
   inlineLoader: { paddingVertical: spacing.md, alignItems: 'center' },
-  cachedBannerText: {
-    color: colors.warning,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.medium,
-  },
+  cachedBannerText: { color: colors.warning, fontSize: typography.size.sm, fontWeight: typography.weight.medium },
   // toggle
   toggleRow: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.full, padding: 4, borderWidth: 1, borderColor: colors.border },
   toggleBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.full, alignItems: 'center' },
@@ -513,24 +475,29 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   emptyCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: spacing.sm, ...shadow.card },
   emptyTitle: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
   emptyText: { fontSize: typography.size.sm, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, fontWeight: typography.weight.medium },
-  // score card
-  scoreCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, borderWidth: 1, borderColor: colors.border, ...shadow.card },
+  // score hero
+  scoreCard: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', ...shadow.card },
   scoreSide: { flex: 1, gap: 4 },
   scoreTitle: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
   scoreDelta: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.bold },
   scoreDeltaMuted: { fontSize: typography.size.sm, color: colors.textMuted, fontWeight: typography.weight.medium },
   scoreHint: { fontSize: typography.size.xs, color: colors.textMuted, fontWeight: typography.weight.medium },
-  // stat cards
+  // stat bubbles
   statRow: { flexDirection: 'row', gap: spacing.md },
-  statCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: 2, ...shadow.card },
+  statCard: { flex: 1, padding: spacing.md, borderWidth: 1, borderColor: colors.border, gap: 2, borderRadius: radius.lg, ...shadow.card },
   statValue: { fontSize: typography.size.xxl, fontFamily: fonts.bold, fontWeight: typography.weight.heavy, color: colors.text, fontVariant: ['tabular-nums'] },
   statLabel: { fontSize: typography.size.sm, color: colors.textSecondary, fontFamily: fonts.medium, fontWeight: typography.weight.medium },
   statDelta: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, marginTop: 2 },
   // sections
   section: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, ...shadow.card },
-  sectionTitle: { fontSize: typography.size.md, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text, marginBottom: spacing.sm },
-  chartContainer: { gap: spacing.sm },
-  legend: { flexDirection: 'row', gap: spacing.md, justifyContent: 'center' },
+  sectionTitle: { fontSize: typography.size.md, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text, marginBottom: spacing.md },
+  // bars
+  barRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  barColWrap: { flex: 1, alignItems: 'stretch', justifyContent: 'flex-end' },
+  barColumn: { flexDirection: 'column-reverse', borderRadius: 9, overflow: 'hidden' },
+  barLabelRow: { flexDirection: 'row', marginTop: spacing.sm },
+  barLabel: { flex: 1, textAlign: 'center', fontSize: 11, color: colors.textMuted },
+  legend: { flexDirection: 'row', gap: spacing.md, justifyContent: 'center', marginTop: spacing.md },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: typography.size.xs, color: colors.textSecondary },
@@ -542,11 +509,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   donutLegendValue: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, color: colors.text, fontVariant: ['tabular-nums'] },
   // category bars
   catDot: { width: 10, height: 10, borderRadius: 5 },
-  catName: { flex: 1, fontSize: typography.size.sm, color: colors.text },
-  catMins: { fontSize: typography.size.sm, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
-  catShare: { fontSize: typography.size.sm, color: colors.textMuted, width: 40, textAlign: 'right', fontVariant: ['tabular-nums'] },
-  distRow: { gap: spacing.xs, marginBottom: spacing.sm },
+  catName: { flex: 1, fontSize: typography.size.sm, color: colors.text, fontWeight: typography.weight.medium },
+  catShare: { fontSize: typography.size.sm, color: colors.textMuted, width: 44, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  distRow: { gap: 6, marginBottom: spacing.md },
   distMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  barBg: { height: 7, backgroundColor: colors.divider, borderRadius: 4, overflow: 'hidden' },
-  barFill: { height: 7, borderRadius: 4 },
 })

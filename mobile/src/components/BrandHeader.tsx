@@ -11,7 +11,11 @@ export function BrandLogo({ size = 28 }: { size?: number }) {
     <Svg width={size} height={size} viewBox="0 0 48 48">
       <Defs>
         <LinearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor="#8B7BF7" />
+          <Stop offset="0%" stopColor="#7C6BF5" />
+          <Stop offset="22%" stopColor="#6FB7FF" />
+          <Stop offset="44%" stopColor="#5BD1B0" />
+          <Stop offset="64%" stopColor="#FFC93C" />
+          <Stop offset="82%" stopColor="#FF8A6B" />
           <Stop offset="100%" stopColor="#FF9EC4" />
         </LinearGradient>
       </Defs>

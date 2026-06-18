@@ -4,7 +4,7 @@ import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
+  ScrollView,
   StyleSheet,
   Alert,
   Modal,
@@ -16,9 +16,9 @@ import type { DailyTimeline, DailyTimelineEntry, ProductivityTag } from '@timele
 import { getTimeline, editTask, deleteTask } from '../api/tasks'
 import { getCategories } from '../api/categories'
 import { TagSelector } from '../components/TagSelector'
-import { SyncIndicator } from '../components/SyncIndicator'
 import { Loader } from '../components/Loader'
-import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
+import { RainbowRibbon } from '../components/playful'
+import { useTheme, typography, spacing, radius, shadow, fonts, ribbonFor, type Palette } from '../theme'
 
 function tagColors(colors: Palette): Record<string, string> {
   return {
@@ -87,7 +87,7 @@ function RowFadeIn({ index, children }: { index: number; children: React.ReactNo
     Animated.timing(anim, {
       toValue: 1,
       duration: 300,
-      delay: Math.min(index, 10) * 40,
+      delay: Math.min(index, 10) * 60,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start()
@@ -96,7 +96,7 @@ function RowFadeIn({ index, children }: { index: number; children: React.ReactNo
     <Animated.View
       style={{
         opacity: anim,
-        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
       }}
     >
       {children}
@@ -109,7 +109,7 @@ function DayBar({ productive, nonProductive, neutral, colors }: { productive: nu
   const total = productive + nonProductive + neutral
   if (total === 0) return null
   return (
-    <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.divider }}>
+    <View style={{ flexDirection: 'row', height: 10, borderRadius: radius.full, overflow: 'hidden', backgroundColor: colors.divider }}>
       {productive > 0 && <View style={{ flex: productive, backgroundColor: colors.productive }} />}
       {nonProductive > 0 && <View style={{ flex: nonProductive, backgroundColor: colors.nonProductive }} />}
       {neutral > 0 && <View style={{ flex: neutral, backgroundColor: colors.neutral }} />}
@@ -118,9 +118,10 @@ function DayBar({ productive, nonProductive, neutral, colors }: { productive: nu
 }
 
 export default function TimelineScreen() {
-  const { colors } = useTheme()
+  const { colors, scheme } = useTheme()
   const styles = useMemo(() => makeStyles(colors), [colors])
   const TAG_COLOR = useMemo(() => tagColors(colors), [colors])
+  const ribbon = ribbonFor(scheme)
   const [date, setDate] = useState(todayStr())
   const [data, setData] = useState<DailyTimeline | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -188,16 +189,18 @@ export default function TimelineScreen() {
     ])
   }
 
-  const renderEntry = ({ item, index }: { item: DailyTimelineEntry; index: number }) => {
-    const entries = data?.entries ?? []
+  const entries = data?.entries ?? []
+
+  const renderRow = (item: DailyTimelineEntry, index: number) => {
     const prev = index > 0 ? entries[index - 1] : null
     const gap = prev ? gapSeconds(prev, item) : 0
     const cat = item.categoryId ? catById.get(item.categoryId) : undefined
     const tagColor = TAG_COLOR[item.tag]
+    const accent = cat?.color ?? tagColor
     const running = !item.endedAt
 
     return (
-      <RowFadeIn index={index}>
+      <RowFadeIn key={item.id} index={index}>
         {gap > 0 && (
           <View style={styles.gapRow}>
             <View style={styles.gapLine} />
@@ -206,15 +209,12 @@ export default function TimelineScreen() {
           </View>
         )}
         <View style={styles.row}>
-          {/* time rail */}
-          <View style={styles.rail}>
-            <Text style={styles.railTime}>{formatTime(item.startedAt)}</Text>
-            <View style={[styles.railDot, { backgroundColor: tagColor }, running && styles.railDotRunning]} />
-            <View style={styles.railLine} />
-          </View>
+          {/* time + dot ride the rainbow ribbon */}
+          <Text style={styles.railTime}>{formatTime(item.startedAt)}</Text>
+          <View style={[styles.railDot, { backgroundColor: accent }, running && styles.railDotRunning]} />
           {/* card */}
           <TouchableOpacity
-            style={[styles.card, running && styles.cardRunning]}
+            style={[styles.card, { borderLeftColor: accent }, running && styles.cardRunning]}
             onPress={() => openEdit(item)}
             onLongPress={() => handleDelete(item)}
             activeOpacity={0.7}
@@ -223,23 +223,16 @@ export default function TimelineScreen() {
               <Text style={[styles.cardTitle, running && styles.cardTitleRunning]} numberOfLines={1}>
                 {running && (item.title === 'Untitled' || !item.title) ? 'Current task' : item.title}
               </Text>
-              <View style={[styles.durationChip, { backgroundColor: `${tagColor}26` }]}>
-                <Text style={[styles.durationText, { color: tagColor }]}>
+              <View style={[styles.durationChip, { backgroundColor: `${accent}26` }]}>
+                <Text style={[styles.durationText, { color: accent }]}>
                   {running ? 'now' : fmtMinutes(item.durationMinutes)}
                 </Text>
               </View>
             </View>
-            <View style={styles.cardMetaRow}>
-              <Text style={styles.cardMeta}>
-                {formatTime(item.startedAt)}{item.endedAt ? ` – ${formatTime(item.endedAt)}` : ' – running'}
-              </Text>
-              {cat && (
-                <View style={styles.catChip}>
-                  <View style={[styles.catDot, { backgroundColor: cat.color ?? colors.textMuted }]} />
-                  <Text style={styles.catText} numberOfLines={1}>{cat.name}</Text>
-                </View>
-              )}
-            </View>
+            <Text style={styles.cardMeta}>
+              {formatTime(item.startedAt)}{item.endedAt ? ` – ${formatTime(item.endedAt)}` : ' – running'}
+              {cat ? ` · ${cat.name}` : ''}
+            </Text>
             {!!item.notes && <Text style={styles.cardNotes} numberOfLines={2}>{item.notes}</Text>}
           </TouchableOpacity>
         </View>
@@ -303,18 +296,18 @@ export default function TimelineScreen() {
         <View style={styles.loadingState}>
           <Loader size="large" color={colors.accent} label="Loading timeline…" />
         </View>
-      ) : data?.entries.length === 0 ? (
+      ) : entries.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>A perfectly blank day</Text>
           <Text style={styles.emptyHint}>Future you will want receipts — hit Start on the Timer tab</Text>
         </View>
       ) : (
-        <FlatList
-          data={data?.entries}
-          keyExtractor={(i) => i.id}
-          renderItem={renderEntry}
-          contentContainerStyle={{ paddingVertical: spacing.md, paddingRight: spacing.md }}
-        />
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.timelineWrap}>
+            <RainbowRibbon width={5} stops={ribbon} style={styles.ribbon} />
+            {entries.map((item, index) => renderRow(item, index))}
+          </View>
+        </ScrollView>
       )}
 
       {/* Edit sheet */}
@@ -365,7 +358,10 @@ export default function TimelineScreen() {
   )
 }
 
-const RAIL_W = 64
+// Layout constants for the ribbon spine. The content is inset from the left so
+// the time labels (far left), dots (on the ribbon) and cards line up.
+const CONTENT_LEFT = 76
+const RIBBON_LEFT = 51
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
@@ -374,43 +370,40 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   navBtn: { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.4 },
   navArrow: { fontSize: typography.size.xl, color: colors.primary, lineHeight: 24 },
-  dateText: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
+  dateText: { fontSize: typography.size.xl, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
   // summary
   summary: { marginHorizontal: spacing.md, marginBottom: spacing.xs, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm, ...shadow.card },
   summaryStats: { flexDirection: 'row' },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryValue: { fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text, fontVariant: ['tabular-nums'] },
   summaryLabel: { fontSize: typography.size.xs, color: colors.textMuted, marginTop: 2, fontFamily: fonts.medium, fontWeight: typography.weight.medium },
-  dayBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.divider },
+  // scroll + ribbon spine
+  scrollContent: { paddingVertical: spacing.md, paddingRight: spacing.md },
+  timelineWrap: { position: 'relative', paddingLeft: CONTENT_LEFT, paddingTop: 6, paddingBottom: 6 },
+  ribbon: { position: 'absolute', left: RIBBON_LEFT, top: 6, bottom: 6 },
   // gap indicator
-  gapRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginLeft: RAIL_W, marginVertical: 2, paddingRight: spacing.sm },
+  gapRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginVertical: 2 },
   gapLine: { flex: 1, height: 1, backgroundColor: colors.divider },
   gapText: { fontSize: typography.size.xs, color: colors.textMuted },
   // timeline rows
-  row: { flexDirection: 'row', marginTop: spacing.sm },
-  rail: { width: RAIL_W, alignItems: 'center' },
-  railTime: { fontSize: typography.size.xs, color: colors.textMuted, fontVariant: ['tabular-nums'], fontFamily: fonts.semibold, fontWeight: typography.weight.semibold },
-  // chunky dot with a soft halo so the rail reads as a real spine
-  railDot: { width: 18, height: 18, borderRadius: 9, marginTop: 6, borderWidth: 4, borderColor: colors.surface },
-  railDotRunning: { width: 20, height: 20, borderRadius: 10, borderWidth: 4, borderColor: colors.background },
-  railLine: { flex: 1, width: 5, backgroundColor: colors.border, marginTop: 4, borderRadius: 3 },
-  card: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: 6, ...shadow.card },
-  cardRunning: { borderColor: colors.productive, borderWidth: 2 },
+  row: { position: 'relative', marginBottom: 14 },
+  railTime: { position: 'absolute', left: -72, top: 18, width: 36, textAlign: 'right', fontSize: 11, color: colors.textMuted, fontVariant: ['tabular-nums'], fontFamily: fonts.semibold, fontWeight: typography.weight.semibold },
+  // chunky dot sitting on the ribbon, with a halo punched out of the background
+  railDot: { position: 'absolute', left: -31, top: 18, width: 18, height: 18, borderRadius: 9, borderWidth: 4, borderColor: colors.background },
+  railDotRunning: { width: 20, height: 20, borderRadius: 10 },
+  card: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, padding: spacing.md, gap: 6, ...shadow.card },
+  cardRunning: { borderColor: colors.productive, borderWidth: 2, borderLeftWidth: 4 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardTitle: { flex: 1, fontSize: typography.size.md, fontFamily: fonts.semibold, fontWeight: typography.weight.bold, color: colors.text },
   cardTitleRunning: { color: colors.accent },
   durationChip: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.full },
   durationText: { fontSize: typography.size.xs, fontFamily: fonts.bold, fontWeight: typography.weight.bold, fontVariant: ['tabular-nums'] },
-  cardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   cardMeta: { fontSize: typography.size.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] },
-  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 140 },
-  catDot: { width: 7, height: 7, borderRadius: 3.5 },
-  catText: { fontSize: typography.size.xs, color: colors.textSecondary },
   cardNotes: { fontSize: typography.size.sm, color: colors.textSecondary, lineHeight: 18 },
   // empty state
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { fontSize: typography.size.lg, color: colors.textSecondary },
-  emptyHint: { fontSize: typography.size.sm, color: colors.textMuted },
+  emptyHint: { fontSize: typography.size.sm, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.xl },
   // loading state
   loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // edit sheet
