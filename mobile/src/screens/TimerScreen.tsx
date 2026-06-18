@@ -9,17 +9,18 @@ import {
   Alert,
   Animated,
   Easing,
-  Pressable,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import type { ProductivityTag, TaskEntry } from '@timelense/shared'
 import { getCurrentTask, startTask, stopTask, editTask, deleteTask } from '../api/tasks'
+import { getCategories } from '../api/categories'
 import { TagSelector } from '../components/TagSelector'
 import { CategoryPicker } from '../components/CategoryPicker'
 import { AuroraBackground } from '../components/AuroraBackground'
 import { SyncIndicator } from '../components/SyncIndicator'
 import { Loader } from '../components/Loader'
-import { useTheme, typography, spacing, radius, shadow, fonts, type Palette } from '../theme'
+import { RainbowButton } from '../components/playful'
+import { useTheme, typography, spacing, radius, shadow, fonts, rainbowFor, type Palette } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
   const end = endedAt ? new Date(endedAt).getTime() : Date.now()
@@ -34,8 +35,6 @@ function formatElapsed(startedAt: string, endedAt?: string): string {
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
-
-const BTN_SIZE = 190
 
 // Quirky-but-professional microcopy, picked at random
 const IDLE_HINTS = [
@@ -54,39 +53,20 @@ const STOP_PROMPTS = [
 ]
 const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 
-// Soft expanding ring behind the big button
-function PulseRing({ color, active }: { color: string; active: boolean }) {
-  const anim = useRef(new Animated.Value(0)).current
-
+// Small blinking status dot — pairs with the RUNNING label.
+function BlinkDot({ color, size = 9 }: { color: string; size?: number }) {
+  const anim = useRef(new Animated.Value(1)).current
   useEffect(() => {
-    if (!active) return
     const loop = Animated.loop(
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 2200,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 0.2, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
     )
     loop.start()
-    return () => { loop.stop(); anim.setValue(0) }
-  }, [active])
-
-  if (!active) return null
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        btnStyles.pulseRing,
-        {
-          borderColor: color,
-          opacity: anim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.55, 0.12, 0] }),
-          transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.45] }) }],
-        },
-      ]}
-    />
-  )
+    return () => loop.stop()
+  }, [])
+  return <Animated.View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity: anim }} />
 }
 
 // Fades + slides its children in when mounted
@@ -108,34 +88,8 @@ function FadeIn({ children }: { children: React.ReactNode }) {
   )
 }
 
-// Big round button with press feedback
-function BigButton({ label, color, onPress, pulse }: { label: string; color: string; onPress: () => void; pulse: boolean }) {
-  const scale = useRef(new Animated.Value(1)).current
-  const pressIn = () => Animated.spring(scale, { toValue: 0.93, useNativeDriver: true, speed: 40, bounciness: 4 }).start()
-  const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }).start()
-
-  return (
-    <View style={btnStyles.bigBtnWrap}>
-      <PulseRing color={color} active={pulse} />
-      <Pressable onPressIn={pressIn} onPressOut={pressOut} onPress={onPress}>
-        <Animated.View style={[btnStyles.bigBtn, shadow.button(color), { backgroundColor: color, transform: [{ scale }] }]}>
-          <Text style={btnStyles.bigBtnText}>{label}</Text>
-        </Animated.View>
-      </Pressable>
-    </View>
-  )
-}
-
-const BTN_RADIUS = BTN_SIZE / 2
-const btnStyles = StyleSheet.create({
-  bigBtnWrap: { width: BTN_SIZE, height: BTN_SIZE, alignItems: 'center', justifyContent: 'center' },
-  pulseRing: { position: 'absolute', width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_RADIUS, borderWidth: 4 },
-  bigBtn: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_RADIUS, alignItems: 'center', justifyContent: 'center' },
-  bigBtnText: { color: '#FFFFFF', fontFamily: fonts.bold, fontSize: typography.size.xxl, fontWeight: typography.weight.bold, letterSpacing: 0.5 },
-})
-
 export default function TimerScreen() {
-  const { colors } = useTheme()
+  const { colors, scheme } = useTheme()
   const styles = useMemo(() => makeStyles(colors), [colors])
   // Current running task — read from local DB (synchronous)
   const [current, setCurrent] = useState<TaskEntry | null>(() => getCurrentTask())
@@ -152,6 +106,15 @@ export default function TimerScreen() {
   const [idleHint] = useState(() => pick(IDLE_HINTS))
   const [stopPrompt, setStopPrompt] = useState(STOP_PROMPTS[0])
   const [stopping, setStopping] = useState(false)
+
+  // Playful concept: the multi-hue sweep for the hero button, per scheme.
+  const rainbow = rainbowFor(scheme)
+  // Category attached to the running span (if any) — shown as a live pill.
+  const runningCat = useMemo(() => {
+    if (!current?.categoryId) return undefined
+    return getCategories().find((c) => c.id === current.categoryId)
+  }, [current?.categoryId])
+  const runningTitle = current && current.title && current.title !== 'Untitled' ? current.title : 'Tracking time'
 
   // Refresh current task when the tab regains focus
   useFocusEffect(useCallback(() => {
@@ -308,11 +271,27 @@ export default function TimerScreen() {
       <FadeIn>
         <View style={[styles.container, styles.centered]}>
           <AuroraBackground accent={colors.danger} />
-          <Text style={styles.runningLabel}>RUNNING</Text>
+          <View style={styles.runningRow}>
+            <BlinkDot color={colors.productive} />
+            <Text style={styles.runningLabel}>RUNNING</Text>
+          </View>
           <Text style={styles.elapsed}>{elapsed}</Text>
           <Text style={styles.startedAt}>since {formatTime(current.startedAt)}</Text>
+          <View style={styles.taskPill}>
+            <View style={[styles.taskPillDot, { backgroundColor: runningCat?.color ?? colors.primary }]} />
+            <Text style={styles.taskPillText}>{runningTitle}</Text>
+            {runningCat && <Text style={styles.taskPillMeta}> · {runningCat.name}</Text>}
+          </View>
           <View style={{ height: spacing.xl }} />
-          <BigButton label={stopping ? 'Stopping…' : 'Stop'} color={colors.danger} onPress={handleStop} pulse={!stopping} />
+          <RainbowButton
+            size={192}
+            label={stopping ? 'Stopping…' : 'Stop'}
+            gradient={[colors.danger, colors.nonProductive]}
+            shadowColor={colors.danger}
+            pulseColors={[colors.danger, colors.danger]}
+            onPress={handleStop}
+            pulse={!stopping}
+          />
           {stopping && (
             <View style={styles.stopOverlay} pointerEvents="auto">
               <Loader size="large" color={colors.white} label="Stopping…" labelStyle={styles.stopOverlayLabel} />
@@ -330,8 +309,18 @@ export default function TimerScreen() {
         <AuroraBackground accent={colors.primary} />
         <SyncIndicator />
         <View style={{ height: spacing.md }} />
-        <BigButton label="Start" color={colors.primary} onPress={handleStart} pulse />
-        <Text style={styles.hint}>{idleHint}{'\n'}Tap Start — details come later.</Text>
+        <RainbowButton
+          size={212}
+          label="Start"
+          sublabel="tap to begin"
+          gradient={rainbow}
+          shadowColor={colors.primary}
+          pulseColors={[colors.primary, colors.nonProductive]}
+          onPress={handleStart}
+          pulse
+        />
+        <Text style={styles.hintLead}>{idleHint}</Text>
+        <Text style={styles.hint}>Tap Start — the details come later.</Text>
       </View>
     </FadeIn>
   )
@@ -348,11 +337,18 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   requiredMark: { color: colors.danger, fontSize: typography.size.sm },
   label: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.bold, color: colors.textSecondary, marginBottom: spacing.xs },
   notesInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, fontSize: typography.size.md, color: colors.text, minHeight: 80, textAlignVertical: 'top', fontWeight: typography.weight.medium },
-  hint: { marginTop: spacing.xl, color: colors.textMuted, fontSize: typography.size.sm, textAlign: 'center', lineHeight: 22, fontWeight: typography.weight.medium },
+  hintLead: { marginTop: spacing.xl, color: colors.text, fontSize: typography.size.lg, textAlign: 'center', fontFamily: fonts.semibold, fontWeight: typography.weight.medium },
+  hint: { marginTop: spacing.xs, color: colors.textMuted, fontSize: typography.size.sm, textAlign: 'center', lineHeight: 22, fontWeight: typography.weight.medium },
   // running state
+  runningRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.xs },
   runningLabel: { fontSize: typography.size.xs, fontFamily: fonts.bold, fontWeight: typography.weight.heavy, color: colors.productive, letterSpacing: 3, textAlign: 'center' },
   elapsed: { fontSize: typography.size.xxxl + 16, fontFamily: fonts.bold, fontWeight: typography.weight.heavy, color: colors.text, textAlign: 'center', fontVariant: ['tabular-nums'] },
   startedAt: { fontSize: typography.size.md, color: colors.textSecondary, textAlign: 'center', fontWeight: typography.weight.medium },
+  // running task pill
+  taskPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginTop: spacing.md },
+  taskPillDot: { width: 9, height: 9, borderRadius: 4.5 },
+  taskPillText: { fontSize: typography.size.md, fontFamily: fonts.semibold, fontWeight: typography.weight.medium, color: colors.text },
+  taskPillMeta: { fontSize: typography.size.md, color: colors.textMuted, fontWeight: typography.weight.medium },
   // details form actions
   saveBtn: { backgroundColor: colors.primary, paddingVertical: spacing.md, borderRadius: radius.full, alignItems: 'center', marginTop: spacing.lg, ...shadow.button(colors.primary) },
   saveBtnText: { color: colors.white, fontSize: typography.size.lg, fontFamily: fonts.bold, fontWeight: typography.weight.bold },

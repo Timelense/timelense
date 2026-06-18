@@ -151,6 +151,26 @@ export const categoryPalette = [
   '#B9A8FF', // lilac
 ] as const
 
+// ── Rainbow (Playful & colourful concept) ───────────────────────────────────
+// The signature multi-hue sweep that runs through every screen: the big timer
+// button, the spinning score ring, the brand dot. The dark set swaps the lead
+// violet for its brighter on-dark variant. Loops back to its first stop so it
+// reads continuously when used as a conic/looping gradient.
+export const rainbow = {
+  light: ['#7C6BF5', '#6FB7FF', '#5BD1B0', '#FFC93C', '#FF8A6B', '#FF9EC4'],
+  dark: ['#9C8BFF', '#6FB7FF', '#5BD1B0', '#FFC93C', '#FF8A6B', '#FF9EC4'],
+} as const
+
+// Vertical ribbon stops (top → bottom) for the timeline spine.
+export const ribbonStops = {
+  light: ['#7C6BF5', '#6FB7FF', '#5BD1B0', '#FFC93C', '#FF8A6B'],
+  dark: ['#9C8BFF', '#6FB7FF', '#5BD1B0', '#FFC93C', '#FF8A6B'],
+} as const
+
+// Convenience: pick the right rainbow/ribbon set for a resolved scheme.
+export const rainbowFor = (scheme: 'light' | 'dark') => rainbow[scheme]
+export const ribbonFor = (scheme: 'light' | 'dark') => ribbonStops[scheme]
+
 // ── Theme context ─────────────────────────────────────────────────────────
 type Scheme = 'light' | 'dark'
 export type ThemePreference = 'system' | 'light' | 'dark'
