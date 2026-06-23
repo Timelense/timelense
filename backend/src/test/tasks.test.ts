@@ -19,6 +19,80 @@ describe('one-running-task invariant', () => {
     expect(JSON.parse(current.body).title).toBe('Task B')
   })
 
+  it('manual backfill (start with explicit times) does not stop the running task', async () => {
+    const app = buildTestApp()
+    const { token } = await registerAndLogin(app)
+
+    // A live timer is running...
+    await app.inject({ method: 'POST', url: '/tasks/start', headers: authHeader(token), payload: { title: 'Live' } })
+
+    // ...and we backfill a completed entry from earlier today.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tasks/start',
+      headers: authHeader(token),
+      payload: {
+        title: 'Backfilled',
+        startedAt: '2026-06-14T08:00:00.000Z',
+        endedAt: '2026-06-14T08:30:00.000Z',
+      },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body)
+    expect(body.stoppedTask).toBeUndefined()
+    expect(body.task.startedAt).toBe('2026-06-14T08:00:00.000Z')
+    expect(body.task.endedAt).toBe('2026-06-14T08:30:00.000Z')
+
+    // The live timer is untouched.
+    const current = await app.inject({ method: 'GET', url: '/tasks/current', headers: authHeader(token) })
+    expect(JSON.parse(current.body).title).toBe('Live')
+  })
+
+  it('manual backfill with endedAt <= startedAt → 400', async () => {
+    const app = buildTestApp()
+    const { token } = await registerAndLogin(app)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tasks/start',
+      headers: authHeader(token),
+      payload: {
+        title: 'Bad',
+        startedAt: '2026-06-14T08:30:00.000Z',
+        endedAt: '2026-06-14T08:00:00.000Z',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('stop honors a client-supplied endedAt (delayed offline sync)', async () => {
+    const app = buildTestApp()
+    const { token } = await registerAndLogin(app)
+    const h = authHeader(token)
+
+    const start = await app.inject({ method: 'POST', url: '/tasks/start', headers: h,
+      payload: { title: 'A', startedAt: '2026-06-23T09:00:00.000Z' } })
+    const id = JSON.parse(start.body).task.id
+
+    // Client recorded the stop at 10:00, even though it syncs much later.
+    const res = await app.inject({ method: 'PATCH', url: `/tasks/${id}/stop`, headers: h,
+      payload: { endedAt: '2026-06-23T10:00:00.000Z' } })
+
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).endedAt).toBe('2026-06-23T10:00:00.000Z')
+  })
+
+  it('stop with no body falls back to server now()', async () => {
+    const app = buildTestApp()
+    const { token } = await registerAndLogin(app)
+    const h = authHeader(token)
+    const start = await app.inject({ method: 'POST', url: '/tasks/start', headers: h, payload: { title: 'A' } })
+    const id = JSON.parse(start.body).task.id
+    const res = await app.inject({ method: 'PATCH', url: `/tasks/${id}/stop`, headers: h })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).endedAt).toBeTruthy()
+  })
+
   it('stop an already-stopped task → 409', async () => {
     const app = buildTestApp()
     const { token } = await registerAndLogin(app)

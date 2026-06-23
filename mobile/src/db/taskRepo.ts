@@ -223,6 +223,57 @@ export function createLocalTask(
 }
 
 /**
+ * Create a manual (backfilled) task locally with explicit start/end times.
+ *
+ * Unlike `createLocalTask`, this does NOT auto-stop the running task — it
+ * represents a completed entry the user is filling in after the fact, so it
+ * must not disturb a live timer. The entry is inserted already-completed
+ * (ended_at set) and the create op carries both times so the server honors
+ * them on sync.
+ */
+export function createLocalManualTask(
+  userId: string,
+  body: {
+    title?: string
+    categoryId?: string | null
+    tag?: string
+    notes?: string | null
+    startedAt: string
+    endedAt: string
+  },
+): TaskEntry {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const localId = uuid()
+
+  db.executeSync(
+    `INSERT INTO local_tasks (local_id, server_id, user_id, title, category_id, tag, notes, started_at, ended_at, sync_status, updated_at, created_at)
+     VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'pending_create', ?, ?)`,
+    [localId, userId, body.title ?? 'Untitled', body.categoryId ?? null, body.tag ?? 'neutral', body.notes ?? null, body.startedAt, body.endedAt, now, now],
+  )
+
+  enqueue('task', 'create', localId, {
+    title: body.title ?? 'Untitled',
+    categoryId: body.categoryId ?? undefined,
+    tag: body.tag ?? 'neutral',
+    notes: body.notes ?? undefined,
+    startedAt: body.startedAt,
+    endedAt: body.endedAt,
+  })
+
+  return {
+    id: localId,
+    title: body.title ?? 'Untitled',
+    categoryId: body.categoryId ?? null,
+    tag: (body.tag ?? 'neutral') as ProductivityTag,
+    startedAt: body.startedAt,
+    endedAt: body.endedAt,
+    notes: body.notes ?? undefined,
+    userId,
+  }
+}
+
+/**
  * Stop a running task locally.
  */
 export function stopLocalTask(localId: string): TaskEntry | null {
@@ -244,9 +295,11 @@ export function stopLocalTask(localId: string): TaskEntry | null {
     [now, newSyncStatus, now, localId],
   )
 
-  if (entry.syncStatus === 'synced') {
-    enqueue('task', 'stop', localId, { endedAt: now })
-  }
+  // Always enqueue the stop. For a synced task this becomes a standalone stop
+  // op; for a still-unsynced task (pending_create) the queue merges endedAt
+  // into the pending create payload (see syncQueue's create+stop rule) so the
+  // stop time isn't lost when the create finally syncs.
+  enqueue('task', 'stop', localId, { endedAt: now })
 
   return { ...entry, endedAt: now }
 }

@@ -246,6 +246,10 @@ async function pushSingleOp(op: queue.QueueEntry): Promise<void> {
           categoryId: payload.categoryId,
           tag: payload.tag,
           notes: payload.notes,
+          // Manual backfill entries carry explicit times; a live-timer create
+          // omits these and the server starts at now().
+          startedAt: payload.startedAt,
+          endedAt: payload.endedAt,
         })
         // Map local_id → server_id
         markTaskSynced(op.entityId, res.task.id)
@@ -261,7 +265,8 @@ async function pushSingleOp(op: queue.QueueEntry): Promise<void> {
           // No server ID yet — this shouldn't happen if create ran first
           throw new Error('Cannot stop unsynced task')
         }
-        await apiRequest(`/tasks/${serverId}/stop`, 'PATCH')
+        // Forward the real stop time so a delayed sync doesn't stamp now().
+        await apiRequest(`/tasks/${serverId}/stop`, 'PATCH', { endedAt: op.payload?.endedAt })
         markTaskSyncedByLocalId(op.entityId)
       }
       break

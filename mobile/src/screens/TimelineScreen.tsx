@@ -13,9 +13,11 @@ import {
   Easing,
 } from 'react-native'
 import type { DailyTimeline, DailyTimelineEntry, ProductivityTag } from '@timelense/shared'
-import { getTimeline, editTask, deleteTask } from '../api/tasks'
+import { getTimeline, editTask, deleteTask, addTask } from '../api/tasks'
 import { getCategories } from '../api/categories'
 import { TagSelector } from '../components/TagSelector'
+import { CategoryPicker } from '../components/CategoryPicker'
+import { DateTimeField } from '../components/DateTimeField'
 import { Loader } from '../components/Loader'
 import { RainbowRibbon } from '../components/playful'
 import { useTheme, typography, spacing, radius, shadow, fonts, ribbonFor, type Palette } from '../theme'
@@ -129,6 +131,17 @@ export default function TimelineScreen() {
   const [editTitle, setEditTitle] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editTag, setEditTag] = useState<ProductivityTag>('neutral')
+  const [editStart, setEditStart] = useState<Date>(new Date())
+  const [editEnd, setEditEnd] = useState<Date>(new Date())
+
+  // "Add task" (manual backfill) sheet state
+  const [adding, setAdding] = useState(false)
+  const [addTitle, setAddTitle] = useState('')
+  const [addNotes, setAddNotes] = useState('')
+  const [addTag, setAddTag] = useState<ProductivityTag>('neutral')
+  const [addCategoryId, setAddCategoryId] = useState<string | null>(null)
+  const [addStart, setAddStart] = useState<Date>(new Date())
+  const [addEnd, setAddEnd] = useState<Date>(new Date())
 
   // Load timeline from local DB (synchronous).
   // We hold the loader for a tick so the user perceives the refresh instead
@@ -161,16 +174,72 @@ export default function TimelineScreen() {
     setEditTitle(entry.title)
     setEditNotes(entry.notes ?? '')
     setEditTag(entry.tag)
+    setEditStart(new Date(entry.startedAt))
+    setEditEnd(entry.endedAt ? new Date(entry.endedAt) : new Date())
   }
 
   const handleSave = () => {
     if (!editing) return
+    const running = !editing.endedAt
+    if (!running && editEnd.getTime() <= editStart.getTime()) {
+      Alert.alert('Invalid times', 'End time must be after the start time.')
+      return
+    }
     try {
-      editTask(editing.id, { title: editTitle, notes: editNotes || null, tag: editTag })
+      editTask(editing.id, {
+        title: editTitle,
+        notes: editNotes || null,
+        tag: editTag,
+        startedAt: editStart.toISOString(),
+        // Leave a running task running; only persist an end time when it has one.
+        ...(running ? {} : { endedAt: editEnd.toISOString() }),
+      })
       loadTimeline()
       setEditing(null)
     } catch {
       Alert.alert('Error', 'Could not save changes')
+    }
+  }
+
+  const openAdd = () => {
+    // Seed sensible times on the day currently in view: a 30-minute block
+    // ending "now" (or noon for past days).
+    const base = date === todayStr() ? new Date() : new Date(`${date}T12:00:00`)
+    const start = new Date(base.getTime() - 30 * 60 * 1000)
+    setAddTitle('')
+    setAddNotes('')
+    setAddTag('neutral')
+    setAddCategoryId(null)
+    setAddStart(start)
+    setAddEnd(base)
+    setAdding(true)
+  }
+
+  const handleAdd = () => {
+    if (!addTitle.trim()) {
+      Alert.alert('Title required', 'Give this entry a title.')
+      return
+    }
+    if (addEnd.getTime() <= addStart.getTime()) {
+      Alert.alert('Invalid times', 'End time must be after the start time.')
+      return
+    }
+    try {
+      addTask({
+        title: addTitle.trim(),
+        notes: addNotes || null,
+        tag: addTag,
+        categoryId: addCategoryId,
+        startedAt: addStart.toISOString(),
+        endedAt: addEnd.toISOString(),
+      })
+      // Jump the timeline to the day the entry lands on so the user sees it.
+      const landed = addStart.toISOString().slice(0, 10)
+      if (landed !== date) setDate(landed)
+      else loadTimeline()
+      setAdding(false)
+    } catch {
+      Alert.alert('Error', 'Could not add entry')
     }
   }
 
@@ -310,6 +379,55 @@ export default function TimelineScreen() {
         </ScrollView>
       )}
 
+      {/* Add task (manual backfill) */}
+      <TouchableOpacity style={styles.fab} onPress={openAdd} activeOpacity={0.85}>
+        <Text style={styles.fabIcon}>＋</Text>
+      </TouchableOpacity>
+
+      <Modal visible={adding} animationType="slide" transparent>
+        <View style={styles.sheetBackdrop}>
+          <View style={[styles.sheet, { maxHeight: '88%' }]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.editHeader}>
+              <TouchableOpacity onPress={() => setAdding(false)}>
+                <Text style={{ color: colors.textSecondary }}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.editTitle}>Add task</Text>
+              <TouchableOpacity onPress={handleAdd}>
+                <Text style={{ color: colors.accent, fontWeight: typography.weight.semibold }}>Add</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.editBody} keyboardShouldPersistTaps="handled">
+              <Text style={styles.fieldLabel}>Title</Text>
+              <TextInput
+                style={styles.fieldInput}
+                value={addTitle}
+                onChangeText={setAddTitle}
+                placeholder="What did you work on?"
+                placeholderTextColor={colors.textMuted}
+                autoFocus
+              />
+              <Text style={styles.fieldLabel}>Time</Text>
+              <DateTimeField label="Start" value={addStart} onChange={setAddStart} />
+              <DateTimeField label="End" value={addEnd} onChange={setAddEnd} />
+              <Text style={styles.fieldLabel}>Category</Text>
+              <CategoryPicker value={addCategoryId} onChange={setAddCategoryId} />
+              <Text style={styles.fieldLabel}>Tag</Text>
+              <TagSelector value={addTag} onChange={setAddTag} />
+              <Text style={styles.fieldLabel}>Notes</Text>
+              <TextInput
+                style={[styles.fieldInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                value={addNotes}
+                onChangeText={setAddNotes}
+                placeholder="Notes"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Edit sheet */}
       <Modal visible={!!editing} animationType="slide" transparent>
         <View style={styles.sheetBackdrop}>
@@ -333,6 +451,11 @@ export default function TimelineScreen() {
                 placeholder="Task title"
                 placeholderTextColor={colors.textMuted}
               />
+              <Text style={styles.fieldLabel}>{editing && !editing.endedAt ? 'Started' : 'Time'}</Text>
+              <DateTimeField label="Start" value={editStart} onChange={setEditStart} />
+              {editing && editing.endedAt && (
+                <DateTimeField label="End" value={editEnd} onChange={setEditEnd} />
+              )}
               <Text style={styles.fieldLabel}>Tag</Text>
               <TagSelector value={editTag} onChange={setEditTag} />
               <Text style={styles.fieldLabel}>Notes</Text>
@@ -416,4 +539,18 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   fieldLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginTop: spacing.xs },
   fieldInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.md, color: colors.text },
   deleteBtn: { padding: spacing.md, borderRadius: radius.md, alignItems: 'center', marginTop: spacing.md },
+  // floating add button
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.xl,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
+  },
+  fabIcon: { fontSize: 30, color: colors.white, lineHeight: 34, fontWeight: typography.weight.bold },
 })

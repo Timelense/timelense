@@ -10,6 +10,7 @@
 import {
   getLocalCurrentTask,
   createLocalTask,
+  createLocalManualTask,
   stopLocalTask,
   editLocalTask,
   deleteLocalTask,
@@ -43,6 +44,24 @@ export function startTask(body: {
   const result = createLocalTask(_cachedUserId, body)
   scheduleSyncSoon()
   return result
+}
+
+/**
+ * Add a manual (backfilled) task with explicit start/end times. Used by the
+ * Timeline "Add task" flow when the user missed hitting Start/Stop. Does not
+ * touch any running timer.
+ */
+export function addTask(body: {
+  title?: string
+  categoryId?: string | null
+  tag?: string
+  notes?: string | null
+  startedAt: string
+  endedAt: string
+}): TaskEntry {
+  const task = createLocalManualTask(_cachedUserId, body)
+  scheduleSyncSoon()
+  return task
 }
 
 export function stopTask(localId: string): TaskEntry | null {
