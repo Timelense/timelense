@@ -14,6 +14,11 @@ const StartBody = z.object({
   categoryId: z.string().uuid().optional(),
   tag: z.enum(PRODUCTIVE_TAG).optional().default('neutral'),
   notes: z.string().optional(),
+  // Manual backfill: when the client supplies explicit times (typically a
+  // completed entry with both startedAt + endedAt), we honor them instead of
+  // starting a live timer at now().
+  startedAt: z.string().datetime().optional(),
+  endedAt: z.string().datetime().optional(),
 })
 
 const EditBody = z.object({
@@ -23,6 +28,10 @@ const EditBody = z.object({
   notes: z.string().nullable().optional(),
   startedAt: z.string().datetime().optional(),
   endedAt: z.string().datetime().nullable().optional(),
+})
+
+const StopBody = z.object({
+  endedAt: z.string().datetime().optional(),
 })
 
 const ListQuery = z.object({
@@ -129,21 +138,39 @@ export async function taskRoutes(app: FastifyInstance) {
       if (err) return reply.code(400).send({ error: err })
     }
 
+    // A manual backfill entry is one that arrives already completed (endedAt
+    // set). It must not disturb a live timer, so we skip the auto-stop and
+    // insert it with the supplied times.
+    const isManual = body.endedAt != null
+    const startedAt = body.startedAt ? new Date(body.startedAt) : undefined
+    const endedAt = body.endedAt ? new Date(body.endedAt) : undefined
+
+    if (startedAt && endedAt) {
+      if (endedAt <= startedAt) {
+        return reply.code(400).send({ error: 'endedAt must be after startedAt' })
+      }
+      if (endedAt.getTime() - startedAt.getTime() > 24 * 60 * 60 * 1000) {
+        return reply.code(400).send({ error: 'duration exceeds 24 hours' })
+      }
+    }
+
     let stoppedTask: TaskEntry | undefined
 
-    // Stop the current running task if any
-    const [running] = await db
-      .select()
-      .from(tasks)
-      .where(and(eq(tasks.userId, request.userId), isNull(tasks.endedAt)))
+    // Stop the current running task if any — but not for manual backfill entries.
+    if (!isManual) {
+      const [running] = await db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.userId, request.userId), isNull(tasks.endedAt)))
 
-    if (running) {
-      const [stopped] = await db
-        .update(tasks)
-        .set({ endedAt: sql`now()` })
-        .where(eq(tasks.id, running.id))
-        .returning()
-      stoppedTask = toEntry(stopped)
+      if (running) {
+        const [stopped] = await db
+          .update(tasks)
+          .set({ endedAt: sql`now()` })
+          .where(eq(tasks.id, running.id))
+          .returning()
+        stoppedTask = toEntry(stopped)
+      }
     }
 
     const [newTask] = await db
@@ -154,6 +181,8 @@ export async function taskRoutes(app: FastifyInstance) {
         title: body.title,
         tag: body.tag,
         notes: body.notes,
+        ...(startedAt && { startedAt }),
+        ...(endedAt && { endedAt }),
       })
       .returning()
 
@@ -164,14 +193,23 @@ export async function taskRoutes(app: FastifyInstance) {
   // PATCH /tasks/:id/stop
   app.patch('/:id/stop', async (request, reply) => {
     const { id } = request.params as { id: string }
+    // The client may report the actual stop time (it can differ from now()
+    // when the stop was recorded offline and synced later). Honor it; fall
+    // back to server now() when absent.
+    const body = StopBody.parse(request.body ?? {})
 
     const existing = await findOwned(id, request.userId)
     if (!existing) return reply.code(404).send({ error: 'not_found' })
     if (existing.endedAt !== null) return reply.code(409).send({ error: 'not_running' })
 
+    const endedAt = body.endedAt ? new Date(body.endedAt) : undefined
+    if (endedAt && endedAt <= existing.startedAt) {
+      return reply.code(400).send({ error: 'endedAt must be after startedAt' })
+    }
+
     const [updated] = await db
       .update(tasks)
-      .set({ endedAt: sql`now()`, updatedAt: sql`now()` })
+      .set({ endedAt: endedAt ?? sql`now()`, updatedAt: sql`now()` })
       .where(eq(tasks.id, id))
       .returning()
 
