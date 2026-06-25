@@ -89,6 +89,7 @@ export function RainbowButton({
   sublabel,
   shadowColor,
   onPress,
+  onLongPress,
   pulse = true,
   pulseColors,
   breathe = true,
@@ -99,6 +100,7 @@ export function RainbowButton({
   sublabel?: string
   shadowColor?: string
   onPress?: () => void
+  onLongPress?: () => void
   pulse?: boolean
   pulseColors?: [string, string]
   breathe?: boolean
@@ -130,7 +132,7 @@ export function RainbowButton({
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       {pulse && <PulseRing color={pc[0]} size={size} duration={2600} />}
       {pulse && <PulseRing color={pc[1]} size={size} duration={2600} delay={1300} />}
-      <Pressable onPressIn={pressIn} onPressOut={pressOut} onPress={onPress}>
+      <Pressable onPressIn={pressIn} onPressOut={pressOut} onPress={onPress} onLongPress={onLongPress}>
         <Animated.View
           style={[
             // Opaque base (hidden behind the SVG fill) so Android casts a clean

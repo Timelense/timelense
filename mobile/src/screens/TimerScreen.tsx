@@ -10,16 +10,19 @@ import {
   Animated,
   Easing,
 } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import type { ProductivityTag, TaskEntry } from '@timelense/shared'
 import { getCurrentTask, startTask, stopTask, editTask, deleteTask } from '../api/tasks'
 import { getCategories } from '../api/categories'
+import { getQuickMacros, recordMacroUse, type MacroWithUsage } from '../api/macros'
 import { TagSelector } from '../components/TagSelector'
 import { CategoryPicker } from '../components/CategoryPicker'
 import { AuroraBackground } from '../components/AuroraBackground'
 import { SyncIndicator } from '../components/SyncIndicator'
 import { Loader } from '../components/Loader'
 import { RainbowButton } from '../components/playful'
+import { MacroChips } from '../components/macros/MacroChips'
+import { MacroPickerSheet } from '../components/macros/MacroPickerSheet'
 import { useTheme, typography, spacing, radius, shadow, fonts, rainbowFor, type Palette } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
@@ -106,6 +109,10 @@ export default function TimerScreen() {
   const [idleHint] = useState(() => pick(IDLE_HINTS))
   const [stopPrompt, setStopPrompt] = useState(STOP_PROMPTS[0])
   const [stopping, setStopping] = useState(false)
+  // Quick-start macros (frecency-ordered) + the full picker sheet.
+  const [macros, setMacros] = useState<MacroWithUsage[]>(() => getQuickMacros())
+  const [sheetVisible, setSheetVisible] = useState(false)
+  const navigation = useNavigation()
 
   // Playful concept: the multi-hue sweep for the hero button, per scheme.
   const rainbow = rainbowFor(scheme)
@@ -116,9 +123,10 @@ export default function TimerScreen() {
   }, [current?.categoryId])
   const runningTitle = current && current.title && current.title !== 'Untitled' ? current.title : 'Tracking time'
 
-  // Refresh current task when the tab regains focus
+  // Refresh current task + macros when the tab regains focus
   useFocusEffect(useCallback(() => {
     setCurrent(getCurrentTask())
+    setMacros(getQuickMacros())
   }, []))
 
   // Live elapsed time computed from startedAt — survives backgrounding
@@ -138,7 +146,22 @@ export default function TimerScreen() {
     setCurrent(result.task)
   }
 
-  // Stop ends the time span immediately, then asks for details
+  // Start pre-filled from a macro — title/category/tag are set immediately, so
+  // there's nothing to label when this session stops.
+  const startWithMacro = (m: MacroWithUsage) => {
+    const result = startTask({ title: m.title, categoryId: m.categoryId ?? undefined, tag: m.tag })
+    recordMacroUse(m.id)
+    setMacros(getQuickMacros())
+    setSheetVisible(false)
+    setCurrent(result.task)
+  }
+
+  // A task counts as "already labeled" if it has a real title (i.e. it was
+  // started from a macro). Those skip the post-stop details form entirely.
+  const isLabeled = (t: TaskEntry) => !!t.title && t.title !== 'Untitled'
+
+  // Stop ends the time span immediately, then asks for details (unless the
+  // entry was started from a macro and is already labeled).
   const handleStop = () => {
     if (!current || stopping) return
     setStopping(true)
@@ -149,7 +172,7 @@ export default function TimerScreen() {
     const stopped = stopTask(current.id)
     setCurrent(null)
     const finish = () => {
-      if (stopped) {
+      if (stopped && !isLabeled(stopped)) {
         setStopPrompt(pick(STOP_PROMPTS))
         setPendingEntry(stopped)
         setTitle('')
@@ -163,6 +186,38 @@ export default function TimerScreen() {
     if (elapsed >= MIN_LOADER_MS) finish()
     else setTimeout(finish, MIN_LOADER_MS - elapsed)
   }
+
+  // Apply a macro to the just-stopped entry (label-on-stop) and save it.
+  const applyMacroToPending = (m: MacroWithUsage) => {
+    if (!pendingEntry) return
+    try {
+      editTask(pendingEntry.id, { title: m.title, categoryId: m.categoryId, tag: m.tag })
+      recordMacroUse(m.id)
+      setMacros(getQuickMacros())
+      setPendingEntry(null)
+    } catch {
+      Alert.alert('Error', 'Could not save the entry')
+    }
+  }
+
+  // Label the *running* task with a macro mid-session, so there's nothing to
+  // fill in when it stops.
+  const applyMacroToRunning = (m: MacroWithUsage) => {
+    if (!current) return
+    try {
+      editTask(current.id, { title: m.title, categoryId: m.categoryId, tag: m.tag })
+      recordMacroUse(m.id)
+      setMacros(getQuickMacros())
+      setCurrent(getCurrentTask())
+      setSheetVisible(false)
+    } catch {
+      Alert.alert('Error', 'Could not label the session')
+    }
+  }
+
+  // True while a plain (un-labeled) session is running — that's when we still
+  // want to offer macros to label it.
+  const runningUnlabeled = !!current && (!current.title || current.title === 'Untitled')
 
   const handleSave = () => {
     if (!pendingEntry) return
@@ -216,6 +271,15 @@ export default function TimerScreen() {
             {'  ·  '}
             {formatElapsed(pendingEntry.startedAt, pendingEntry.endedAt ?? undefined)}
           </Text>
+
+          {macros.length > 0 && (
+            <View style={styles.pendingMacros}>
+              <Text style={[styles.label, { paddingHorizontal: 0 }]}>Quick fill</Text>
+              <View style={styles.pendingMacrosRow}>
+                <MacroChips macros={macros} onPick={applyMacroToPending} />
+              </View>
+            </View>
+          )}
 
           <Text style={styles.label}>
             Title <Text style={styles.requiredMark}>*</Text>
@@ -292,11 +356,25 @@ export default function TimerScreen() {
             onPress={handleStop}
             pulse={!stopping}
           />
+          {runningUnlabeled && macros.length > 0 && !stopping && (
+            <View style={styles.runningMacros}>
+              <Text style={styles.runningMacrosLabel}>Label this session</Text>
+              <MacroChips macros={macros} onPick={applyMacroToRunning} onMore={() => setSheetVisible(true)} />
+            </View>
+          )}
           {stopping && (
             <View style={styles.stopOverlay} pointerEvents="auto">
               <Loader size="large" color={colors.white} label="Stopping…" labelStyle={styles.stopOverlayLabel} />
             </View>
           )}
+          <MacroPickerSheet
+            visible={sheetVisible}
+            macros={macros}
+            title="Label this session"
+            onPick={applyMacroToRunning}
+            onClose={() => setSheetVisible(false)}
+            onManage={() => { setSheetVisible(false); navigation.navigate('Settings' as never) }}
+          />
         </View>
       </FadeIn>
     )
@@ -317,10 +395,21 @@ export default function TimerScreen() {
           shadowColor={colors.primary}
           pulseColors={[colors.primary, colors.nonProductive]}
           onPress={handleStart}
+          onLongPress={() => setSheetVisible(true)}
           pulse
         />
         <Text style={styles.hintLead}>{idleHint}</Text>
-        <Text style={styles.hint}>Tap Start — the details come later.</Text>
+        <Text style={styles.hint}>Tap Start, or pick a macro below.</Text>
+        <View style={styles.idleMacros}>
+          <MacroChips macros={macros} onPick={startWithMacro} onMore={() => setSheetVisible(true)} />
+        </View>
+        <MacroPickerSheet
+          visible={sheetVisible}
+          macros={macros}
+          onPick={startWithMacro}
+          onClose={() => setSheetVisible(false)}
+          onManage={() => { setSheetVisible(false); navigation.navigate('Settings' as never) }}
+        />
       </View>
     </FadeIn>
   )
@@ -338,6 +427,12 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   label: { fontSize: typography.size.sm, fontFamily: fonts.semibold, fontWeight: typography.weight.bold, color: colors.textSecondary, marginBottom: spacing.xs },
   notesInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, fontSize: typography.size.md, color: colors.text, minHeight: 80, textAlignVertical: 'top', fontWeight: typography.weight.medium },
   hintLead: { marginTop: spacing.xl, color: colors.text, fontSize: typography.size.lg, textAlign: 'center', fontFamily: fonts.semibold, fontWeight: typography.weight.medium },
+  // macro rows
+  idleMacros: { marginTop: spacing.lg, alignSelf: 'stretch', marginHorizontal: -spacing.lg },
+  runningMacros: { marginTop: spacing.xl, alignSelf: 'stretch', marginHorizontal: -spacing.lg, gap: spacing.sm },
+  runningMacrosLabel: { fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'center', fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, letterSpacing: 1, textTransform: 'uppercase' },
+  pendingMacros: { gap: spacing.xs, marginBottom: spacing.sm },
+  pendingMacrosRow: { marginHorizontal: -spacing.lg },
   hint: { marginTop: spacing.xs, color: colors.textMuted, fontSize: typography.size.sm, textAlign: 'center', lineHeight: 22, fontWeight: typography.weight.medium },
   // running state
   runningRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.xs },

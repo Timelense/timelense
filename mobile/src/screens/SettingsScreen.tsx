@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native'
 import { useTheme, typography, spacing, radius, fonts, type Palette, type ThemePreference } from '../theme'
 import { useAuth } from '../contexts/auth'
 import { logout } from '../api/auth'
 import { useSyncStatus } from '../sync/syncStatus'
+import { MacroManager } from '../components/macros/MacroManager'
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'Auto' },
@@ -51,7 +52,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.card}>
         <Text style={styles.appName}>TimeLens</Text>
         <Text style={styles.tagline}>Track where your time really goes</Text>
@@ -75,6 +76,8 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      <MacroManager />
+
       <View style={styles.card}>
         <TouchableOpacity style={styles.row} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log out</Text>
@@ -82,12 +85,13 @@ export default function SettingsScreen() {
       </View>
 
       <Text style={styles.version}>v1.0.0</Text>
-    </View>
+    </ScrollView>
   )
 }
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.md, gap: spacing.md },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.sm },
   appName: { fontSize: typography.size.xl, fontFamily: fonts.bold, fontWeight: typography.weight.bold, color: colors.text },
   tagline: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: 4, fontFamily: fonts.medium, fontWeight: typography.weight.medium },
