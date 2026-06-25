@@ -12,6 +12,20 @@ export interface Category {
   color?: string
 }
 
+/**
+ * A reusable "quick start" preset. Tapping a macro starts (or labels) a task
+ * with the title/category/tag already filled in. There is no hard cap — the UI
+ * surfaces the most-used ones and keeps the rest behind a picker.
+ */
+export interface Macro {
+  id: string
+  title: string
+  categoryId: string | null
+  tag: ProductivityTag
+  order: number
+  pinned?: boolean
+}
+
 export interface TaskEntry {
   id: string
   title: string
