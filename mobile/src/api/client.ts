@@ -28,7 +28,7 @@ export async function clearToken(): Promise<void> {
   await Keychain.resetGenericPassword({ service: TOKEN_SERVICE })
 }
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 export async function apiRequest<T>(
   path: string,
