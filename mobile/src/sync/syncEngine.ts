@@ -15,6 +15,7 @@ import {
   upsertTasksFromServer,
 } from '../db/taskRepo'
 import { upsertCategoriesFromServer } from '../db/categoryRepo'
+import { pullMacros } from '../api/macros'
 import { updateCheckpointFromDb } from '../db/healthCheck'
 import { getSyncMeta, setSyncMeta } from './syncMeta'
 import type { TaskEntry, Category } from '@timelense/shared'
@@ -318,6 +319,9 @@ async function pullPhase(): Promise<void> {
     // Pull categories
     const categories = await apiRequest<Category[]>('/categories')
     upsertCategoriesFromServer(_userId, categories)
+
+    // Pull quick-start macros into the local cache
+    await pullMacros()
 
     setSyncMeta('last_pull_at', new Date().toISOString())
   } catch (err) {

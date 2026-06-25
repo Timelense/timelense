@@ -1,5 +1,6 @@
-import { pgTable, pgEnum, uuid, varchar, text, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, pgEnum, uuid, varchar, text, timestamp, index, uniqueIndex, jsonb } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+import type { Macro } from '@timelense/shared'
 
 export const productivityTagEnum = pgEnum('productivity_tag', ['productive', 'non-productive', 'neutral'])
 
@@ -18,6 +19,17 @@ export const categories = pgTable('categories', {
   parentId: uuid('parent_id').references((): any => categories.id, { onDelete: 'set null' }),
   color: varchar('color', { length: 7 }),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+})
+
+// Quick-start macros, stored as a single JSON document per user. The set is
+// small and always read/written as a whole, so one jsonb column is simpler
+// (and atomic) than a row per macro.
+export const userMacros = pgTable('user_macros', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  macros: jsonb('macros').$type<Macro[]>().notNull().default(sql`'[]'::jsonb`),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
 export const tasks = pgTable('tasks', {
