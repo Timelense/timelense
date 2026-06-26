@@ -14,7 +14,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import type { ProductivityTag, TaskEntry } from '@timelense/shared'
 import { getCurrentTask, startTask, stopTask, editTask, deleteTask } from '../api/tasks'
 import { getCategories } from '../api/categories'
-import { getQuickMacros, recordMacroUse, type MacroWithUsage } from '../api/macros'
+import { getQuickMacros, recordMacroUse, upsertMacro, removeMacro, setMacroPinned, newMacroId, type MacroWithUsage } from '../api/macros'
+import type { Macro } from '@timelense/shared'
 import { TagSelector } from '../components/TagSelector'
 import { CategoryPicker } from '../components/CategoryPicker'
 import { AuroraBackground } from '../components/AuroraBackground'
@@ -23,6 +24,9 @@ import { Loader } from '../components/Loader'
 import { RainbowButton } from '../components/playful'
 import { MacroChips } from '../components/macros/MacroChips'
 import { MacroPickerSheet } from '../components/macros/MacroPickerSheet'
+import { MacroBoard } from '../components/macros/MacroBoard'
+import { MacroPeek } from '../components/macros/MacroPeek'
+import { MacroEditor } from '../components/macros/MacroEditor'
 import { useTheme, typography, spacing, radius, shadow, fonts, rainbowFor, type Palette } from '../theme'
 
 function formatElapsed(startedAt: string, endedAt?: string): string {
@@ -112,7 +116,45 @@ export default function TimerScreen() {
   // Quick-start macros (frecency-ordered) + the full picker sheet.
   const [macros, setMacros] = useState<MacroWithUsage[]>(() => getQuickMacros())
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [peekMacro, setPeekMacro] = useState<MacroWithUsage | null>(null)
+  const [editingMacro, setEditingMacro] = useState<Macro | null>(null)
+  const [isNewMacro, setIsNewMacro] = useState(false)
+  const [savingMacro, setSavingMacro] = useState(false)
   const navigation = useNavigation()
+
+  const refreshMacros = () => setMacros(getQuickMacros())
+  const persistMacro = async (op: Promise<unknown>) => {
+    setSavingMacro(true)
+    try {
+      await op
+    } catch {
+      Alert.alert('Saved offline', "Couldn't reach the server. Your macros are saved on this device and will sync when you're back online.")
+    } finally {
+      refreshMacros()
+      setSavingMacro(false)
+      setEditingMacro(null)
+    }
+  }
+  const openNewMacro = () => {
+    setIsNewMacro(true)
+    setEditingMacro({ id: newMacroId(), title: '', categoryId: null, tag: 'neutral', order: macros.length })
+  }
+  const openEditMacro = (m: MacroWithUsage) => {
+    setPeekMacro(null)
+    setIsNewMacro(false)
+    setEditingMacro({ id: m.id, title: m.title, categoryId: m.categoryId, tag: m.tag, order: m.order, pinned: m.pinned })
+  }
+  const saveMacroEdit = (m: Macro) => {
+    if (!m.title.trim()) { Alert.alert('Name required', 'Give the macro a title.'); return }
+    persistMacro(upsertMacro({ ...m, title: m.title.trim() }))
+  }
+  const deleteMacroConfirm = (m: MacroWithUsage) => {
+    setPeekMacro(null)
+    Alert.alert('Delete macro', `Delete "${m.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => persistMacro(removeMacro(m.id)) },
+    ])
+  }
 
   // Playful concept: the multi-hue sweep for the hero button, per scheme.
   const rainbow = rainbowFor(scheme)
@@ -153,6 +195,7 @@ export default function TimerScreen() {
     recordMacroUse(m.id)
     setMacros(getQuickMacros())
     setSheetVisible(false)
+    setPeekMacro(null)
     setCurrent(result.task)
   }
 
@@ -401,14 +444,29 @@ export default function TimerScreen() {
         <Text style={styles.hintLead}>{idleHint}</Text>
         <Text style={styles.hint}>Tap Start, or pick a macro below.</Text>
         <View style={styles.idleMacros}>
-          <MacroChips macros={macros} onPick={startWithMacro} onMore={() => setSheetVisible(true)} />
+          <MacroBoard
+            macros={macros}
+            onPick={startWithMacro}
+            onPeek={setPeekMacro}
+            onNew={openNewMacro}
+            onManage={() => navigation.navigate('Settings' as never)}
+          />
         </View>
-        <MacroPickerSheet
-          visible={sheetVisible}
-          macros={macros}
-          onPick={startWithMacro}
-          onClose={() => setSheetVisible(false)}
-          onManage={() => { setSheetVisible(false); navigation.navigate('Settings' as never) }}
+        <MacroPeek
+          macro={peekMacro}
+          onStart={startWithMacro}
+          onEdit={openEditMacro}
+          onTogglePin={(m) => { setPeekMacro(null); persistMacro(setMacroPinned(m.id, !m.pinned)) }}
+          onDelete={deleteMacroConfirm}
+          onClose={() => setPeekMacro(null)}
+        />
+        <MacroEditor
+          macro={editingMacro}
+          isNew={isNewMacro}
+          saving={savingMacro}
+          onSave={saveMacroEdit}
+          onDelete={(id) => persistMacro(removeMacro(id))}
+          onClose={() => setEditingMacro(null)}
         />
       </View>
     </FadeIn>
@@ -428,7 +486,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   notesInput: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, fontSize: typography.size.md, color: colors.text, minHeight: 80, textAlignVertical: 'top', fontWeight: typography.weight.medium },
   hintLead: { marginTop: spacing.xl, color: colors.text, fontSize: typography.size.lg, textAlign: 'center', fontFamily: fonts.semibold, fontWeight: typography.weight.medium },
   // macro rows
-  idleMacros: { marginTop: spacing.lg, alignSelf: 'stretch', marginHorizontal: -spacing.lg },
+  idleMacros: { marginTop: spacing.lg, alignSelf: 'stretch' },
   runningMacros: { marginTop: spacing.xl, alignSelf: 'stretch', marginHorizontal: -spacing.lg, gap: spacing.sm },
   runningMacrosLabel: { fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'center', fontFamily: fonts.semibold, fontWeight: typography.weight.semibold, letterSpacing: 1, textTransform: 'uppercase' },
   pendingMacros: { gap: spacing.xs, marginBottom: spacing.sm },
