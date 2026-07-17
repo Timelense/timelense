@@ -19,6 +19,46 @@ export interface QueueEntry {
   lastError: string | null
 }
 
+// Ops currently being pushed by the sync engine. Merging into an in-flight
+// row would be lost: the push already read the old payload and dequeues the
+// row on success. In-memory is correct — nothing is in flight after a
+// process restart.
+const _inFlight = new Set<number>()
+
+export function markInFlight(id: number): void {
+  _inFlight.add(id)
+}
+
+export function clearInFlight(id: number): void {
+  _inFlight.delete(id)
+}
+
+export function hasInFlightOp(entity: QueueEntry['entity'], entityId: string): boolean {
+  const db = getDb()
+  const result = db.executeSync(
+    'SELECT id FROM sync_queue WHERE entity = ? AND entity_id = ?',
+    [entity, entityId],
+  )
+  return (result.rows ?? []).some((row) => _inFlight.has(row.id as number))
+}
+
+/**
+ * Count pending ops for an entity, optionally excluding one op id
+ * (the op whose completion is being processed).
+ */
+export function countPendingOps(
+  entity: QueueEntry['entity'],
+  entityId: string,
+  excludeOpId?: number,
+): number {
+  const db = getDb()
+  const result = db.executeSync(
+    'SELECT COUNT(*) as cnt FROM sync_queue WHERE entity = ? AND entity_id = ? AND id != ?',
+    [entity, entityId, excludeOpId ?? -1],
+  )
+  return (result.rows?.[0]?.cnt as number) ?? 0
+}
+
 /**
  * Add an operation to the sync queue.
  * Merges intelligently with existing pending ops for the same entity.
@@ -43,7 +83,7 @@ export function enqueue(
     const firstId = firstRow.id as number
 
     // create + update → update the create payload (merge fields)
-    if (firstOp === 'create' && operation === 'update') {
+    if (firstOp === 'create' && operation === 'update' && !_inFlight.has(firstId)) {
       const existingPayload = firstRow.payload
         ? JSON.parse(firstRow.payload as string)
         : {}
@@ -56,7 +96,7 @@ export function enqueue(
     }
 
     // create + stop → update the create payload to include endedAt
-    if (firstOp === 'create' && operation === 'stop') {
+    if (firstOp === 'create' && operation === 'stop' && !_inFlight.has(firstId)) {
       const existingPayload = firstRow.payload
         ? JSON.parse(firstRow.payload as string)
         : {}
@@ -69,7 +109,7 @@ export function enqueue(
     }
 
     // create + delete → cancel both out (entity was never synced)
-    if (firstOp === 'create' && operation === 'delete') {
+    if (firstOp === 'create' && operation === 'delete' && !_inFlight.has(firstId)) {
       db.executeSync(
         'DELETE FROM sync_queue WHERE entity = ? AND entity_id = ?',
         [entity, entityId],
@@ -81,21 +121,27 @@ export function enqueue(
     if (firstOp === 'update' && operation === 'update') {
       const lastRow = existing.rows[existing.rows.length - 1]
       const lastId = lastRow.id as number
-      const lastPayload = lastRow.payload ? JSON.parse(lastRow.payload as string) : {}
-      const merged = { ...lastPayload, ...payload }
-      db.executeSync(
-        'UPDATE sync_queue SET payload = ? WHERE id = ?',
-        [JSON.stringify(merged), lastId],
-      )
-      return
+      if (!_inFlight.has(lastId)) {
+        const lastPayload = lastRow.payload ? JSON.parse(lastRow.payload as string) : {}
+        const merged = { ...lastPayload, ...payload }
+        db.executeSync(
+          'UPDATE sync_queue SET payload = ? WHERE id = ?',
+          [JSON.stringify(merged), lastId],
+        )
+        return
+      }
+      // In flight — fall through to insert a fresh update op below
     }
 
-    // update + delete → remove the update, keep just the delete
+    // any + delete → the delete supersedes queued mutations, but an in-flight
+    // op has already been sent, so its row must survive until dequeue.
     if (operation === 'delete') {
-      db.executeSync(
-        'DELETE FROM sync_queue WHERE entity = ? AND entity_id = ?',
-        [entity, entityId],
-      )
+      for (const row of existing.rows) {
+        const rowId = row.id as number
+        if (!_inFlight.has(rowId)) {
+          db.executeSync('DELETE FROM sync_queue WHERE id = ?', [rowId])
+        }
+      }
       // Fall through to insert the delete op below
     }
   }

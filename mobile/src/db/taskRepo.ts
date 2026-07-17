@@ -7,7 +7,7 @@
  * Uses executeSync with named-column row access (Record<string, Scalar>).
  */
 import { getDb } from './database'
-import { enqueue } from './syncQueue'
+import { enqueue, countPendingOps, hasInFlightOp } from './syncQueue'
 import type { Scalar } from '@op-engineering/op-sqlite'
 import type { TaskEntry, StartTaskResponse, DailyTimeline, DailyTimelineEntry, ProductivityTag } from '@timelense/shared'
 
@@ -186,9 +186,11 @@ export function createLocalTask(
       [now, now, running.localId],
     )
 
-    if (running.syncStatus === 'synced') {
-      enqueue('task', 'stop', running.localId, { endedAt: now })
-    }
+    // Always enqueue the stop, whatever the sync state: for a pending_create
+    // task the queue merges endedAt into the create payload; for anything
+    // else it becomes a standalone stop op. Skipping this for non-synced
+    // tasks left the server timer running forever.
+    enqueue('task', 'stop', running.localId, { endedAt: now })
 
     stoppedTask = { ...running, endedAt: now }
   }
@@ -378,7 +380,10 @@ export function deleteLocalTask(localId: string): boolean {
   if (!result.rows || result.rows.length === 0) return false
   const syncStatus = result.rows[0].sync_status as string
 
-  if (syncStatus === 'pending_create') {
+  // Hard-delete only if the create hasn't been sent yet — the queue cancels
+  // create+delete. If the create is in flight, the server row will exist, so
+  // keep the local row as pending_delete until the delete op pushes.
+  if (syncStatus === 'pending_create' && !hasInFlightOp('task', localId)) {
     db.executeSync('DELETE FROM local_tasks WHERE local_id = ?', [localId])
     enqueue('task', 'delete', localId) // queue merge will cancel the create+delete
     return true
@@ -456,20 +461,39 @@ export function upsertTasksFromServer(tasks: TaskEntry[]): void {
 
 /**
  * After a create op syncs, map local_id → server_id.
+ *
+ * Only flips to 'synced' when no other ops are queued for the task. If the
+ * task was mutated while the create was in flight (e.g. stopped), a queued
+ * op still has to push — marking it 'synced' now would let the next pull
+ * overwrite the local change with stale server state.
  */
-export function markTaskSynced(localId: string, serverId: string): void {
+export function markTaskSynced(localId: string, serverId: string, completedOpId: number): void {
   const db = getDb()
-  db.executeSync(
-    "UPDATE local_tasks SET server_id = ?, sync_status = 'synced' WHERE local_id = ?",
-    [serverId, localId],
-  )
+  if (countPendingOps('task', localId, completedOpId) === 0) {
+    db.executeSync(
+      "UPDATE local_tasks SET server_id = ?, sync_status = 'synced' WHERE local_id = ?",
+      [serverId, localId],
+    )
+  } else {
+    // Ops still queued: keep the pending status (a pending_delete must stay
+    // a pending_delete), but pending_create is done — it becomes pending_update.
+    db.executeSync(
+      `UPDATE local_tasks SET server_id = ?, sync_status = CASE
+        WHEN sync_status = 'pending_create' THEN 'pending_update'
+        ELSE sync_status
+       END WHERE local_id = ?`,
+      [serverId, localId],
+    )
+  }
 }
 
 /**
- * Mark a task as synced (for stop/update ops that completed).
+ * Mark a task as synced (for stop/update ops that completed), unless other
+ * ops are still queued for it — see markTaskSynced.
  */
-export function markTaskSyncedByLocalId(localId: string): void {
+export function markTaskSyncedByLocalId(localId: string, completedOpId: number): void {
   const db = getDb()
+  if (countPendingOps('task', localId, completedOpId) > 0) return
   db.executeSync(
     "UPDATE local_tasks SET sync_status = 'synced' WHERE local_id = ?",
     [localId],

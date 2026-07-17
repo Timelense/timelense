@@ -135,9 +135,15 @@ let _debounceTimer: ReturnType<typeof setTimeout> | null = null
 export function scheduleSyncSoon(): void {
   if (_debounceTimer) clearTimeout(_debounceTimer)
   _debounceTimer = setTimeout(() => {
-    if (_isOnline && !_isSyncing) {
-      runSyncCycle()
+    if (!_isOnline) return
+    if (_isSyncing) {
+      // A cycle is already running and won't see ops enqueued after its
+      // queue snapshot — re-arm so this mutation isn't stranded until the
+      // 5-minute periodic sync.
+      scheduleSyncSoon()
+      return
     }
+    runSyncCycle()
   }, 2000)
 }
 
@@ -201,7 +207,15 @@ async function pushPhase(): Promise<void> {
     }
 
     try {
-      await pushSingleOp(op)
+      // While the op is in flight, the queue must not merge new mutations
+      // into its row — the payload was already sent and the row is dequeued
+      // on success, which would silently drop the merged change.
+      queue.markInFlight(op.id)
+      try {
+        await pushSingleOp(op)
+      } finally {
+        queue.clearInFlight(op.id)
+      }
       queue.dequeue(op.id)
       _failedAttemptsCache.delete(op.id)
     } catch (err) {
@@ -253,7 +267,7 @@ async function pushSingleOp(op: queue.QueueEntry): Promise<void> {
           endedAt: payload.endedAt,
         })
         // Map local_id → server_id
-        markTaskSynced(op.entityId, res.task.id)
+        markTaskSynced(op.entityId, res.task.id, op.id)
         queue.remapEntityId(op.entityId, op.entityId) // Keep local_id in queue for consistency
       }
       break
@@ -268,7 +282,7 @@ async function pushSingleOp(op: queue.QueueEntry): Promise<void> {
         }
         // Forward the real stop time so a delayed sync doesn't stamp now().
         await apiRequest(`/tasks/${serverId}/stop`, 'PATCH', { endedAt: op.payload?.endedAt })
-        markTaskSyncedByLocalId(op.entityId)
+        markTaskSyncedByLocalId(op.entityId, op.id)
       }
       break
     }
@@ -280,7 +294,7 @@ async function pushSingleOp(op: queue.QueueEntry): Promise<void> {
           throw new Error('Cannot update unsynced task')
         }
         await apiRequest(`/tasks/${serverId}`, 'PATCH', op.payload)
-        markTaskSyncedByLocalId(op.entityId)
+        markTaskSyncedByLocalId(op.entityId, op.id)
       }
       break
     }
